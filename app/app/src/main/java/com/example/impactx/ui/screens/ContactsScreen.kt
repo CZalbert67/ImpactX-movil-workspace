@@ -113,7 +113,7 @@ fun ContactsScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = contact.name.take(2).toUpperCase(),
+                                        text = contact.name.take(2).uppercase(),
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = TealPrimary
