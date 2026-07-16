@@ -1,10 +1,10 @@
 package com.example.impactx
 
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
@@ -12,13 +12,22 @@ import com.example.impactx.ui.screens.*
 
 @Composable
 fun MainNavigation() {
-  val backStack = rememberNavBackStack(Welcome)
+  var activePlan by remember { mutableStateOf("Básico") }
+  val backStack = rememberNavBackStack(Splash)
 
   NavDisplay(
     backStack = backStack,
     onBack = { backStack.removeLastOrNull() },
     entryProvider =
       entryProvider {
+        entry<Splash> {
+          SplashScreen(
+            onTimeout = {
+              backStack.removeLastOrNull() // remove Splash
+              backStack.add(Welcome)      // go to Welcome
+            }
+          )
+        }
         entry<Welcome> {
           WelcomeScreen(
             onNavigateToLogin = { backStack.add(Login) },
@@ -41,11 +50,15 @@ fun MainNavigation() {
         }
         entry<Home> {
           HomeScreen(
+            currentPlan = activePlan,
             onNavigateToMedical = { backStack.add(Medical) },
             onNavigateToVehicle = { backStack.add(Vehicle) },
             onNavigateToContacts = { backStack.add(Contacts) },
+            onNavigateToPlans = { backStack.add(Plans) },
             onStartTrip = { backStack.add(ActiveTrip) },
-            onLogout = { backStack.removeLastOrNull() } // go back to login/welcome
+            onLogout = { 
+              backStack.removeLastOrNull() // go back to welcome
+            }
           )
         }
         entry<Medical> {
@@ -55,17 +68,36 @@ fun MainNavigation() {
         }
         entry<Vehicle> {
           VehicleScreen(
-            onNavigateBack = { backStack.removeLastOrNull() }
+            currentPlan = activePlan,
+            onNavigateBack = { backStack.removeLastOrNull() },
+            onNavigateToPlans = { backStack.add(Plans) }
           )
         }
         entry<Contacts> {
           ContactsScreen(
-            onNavigateBack = { backStack.removeLastOrNull() }
+            currentPlan = activePlan,
+            onNavigateBack = { backStack.removeLastOrNull() },
+            onNavigateToPlans = { backStack.add(Plans) }
           )
         }
         entry<ActiveTrip> {
           ActiveTripScreen(
-            onFinishTrip = { backStack.removeLastOrNull() }
+            currentPlan = activePlan,
+            onTriggerSos = { backStack.add(EmergencyChat) },
+            onFinishTrip = { backStack.removeLastOrNull() },
+            onNavigateToPlans = { backStack.add(Plans) }
+          )
+        }
+        entry<Plans> {
+          PlansScreen(
+            currentPlan = activePlan,
+            onNavigateBack = { backStack.removeLastOrNull() },
+            onPlanSelected = { activePlan = it }
+          )
+        }
+        entry<EmergencyChat> {
+          EmergencyChatScreen(
+            onCloseChat = { backStack.removeLastOrNull() }
           )
         }
       },

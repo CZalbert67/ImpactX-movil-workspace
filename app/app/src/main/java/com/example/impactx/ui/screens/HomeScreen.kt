@@ -14,15 +14,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
 fun HomeScreen(
+    currentPlan: String,
     onNavigateToMedical: () -> Unit,
     onNavigateToVehicle: () -> Unit,
     onNavigateToContacts: () -> Unit,
+    onNavigateToPlans: () -> Unit,
     onStartTrip: () -> Unit,
     onLogout: () -> Unit
 ) {
@@ -34,13 +35,14 @@ fun HomeScreen(
                     colors = listOf(DarkBlue, Color(0xFF040D17))
                 )
             )
+            .systemBarsPadding()
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(20.dp)
         ) {
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Custom Top Bar
             Row(
@@ -73,18 +75,29 @@ fun HomeScreen(
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { onNavigateToPlans() }
+                        ) {
                             Box(
                                 modifier = Modifier
                                     .size(8.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0xFF22C55E))
+                                    .background(
+                                        when (currentPlan) {
+                                            "Básico" -> Color(0xFFF59E0B)
+                                            else -> Color(0xFF22C55E)
+                                        }
+                                    )
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Plan Premium Activo",
+                                text = "Plan $currentPlan >",
                                 fontSize = 12.sp,
-                                color = Color(0xFF22C55E),
+                                color = when (currentPlan) {
+                                    "Básico" -> Color(0xFFF59E0B)
+                                    else -> Color(0xFF22C55E)
+                                },
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
@@ -116,7 +129,7 @@ fun HomeScreen(
                             color = GrayMuted
                         )
                         Text(
-                            text = "Monitoreo Listo",
+                            text = if (currentPlan == "Básico") "Funciones Limitadas" else "Monitoreo Listo",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -125,13 +138,21 @@ fun HomeScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF22C55E).copy(alpha = 0.15f))
+                            .background(
+                                when (currentPlan) {
+                                    "Básico" -> Color(0xFFF59E0B).copy(alpha = 0.15f)
+                                    else -> Color(0xFF22C55E).copy(alpha = 0.15f)
+                                }
+                            )
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            text = "Wear OS: Ok",
+                            text = if (currentPlan == "Básico") "Básico" else "Wear OS: Ok",
                             fontSize = 12.sp,
-                            color = Color(0xFF22C55E),
+                            color = when (currentPlan) {
+                                "Básico" -> Color(0xFFF59E0B)
+                                else -> Color(0xFF22C55E)
+                            },
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -211,7 +232,12 @@ fun HomeScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("1.02 G", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(
+                            text = if (currentPlan == "Básico") "N/A" else "1.02 G",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
                         Text("Fuerza G", fontSize = 12.sp, color = GrayMuted)
                     }
                 }
