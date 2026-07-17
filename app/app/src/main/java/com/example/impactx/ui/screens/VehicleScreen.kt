@@ -447,3 +447,13 @@ fun VehicleScreen(
         }
     }
 }
+
+data class VehicleItem(
+    val type: String,
+    val brand: String,
+    val model: String,
+    val year: String,
+    val plate: String,
+    val mainUse: String,
+    val avgSpeed: String
+)
