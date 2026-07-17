@@ -1,10 +1,24 @@
 package com.example.impactx.ui.screens
 
+import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothGattCallback
+import android.bluetooth.BluetoothGattDescriptor
+import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
 import android.content.Context
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -21,6 +35,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -29,63 +44,121 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.UUID
 import kotlin.math.sqrt
 
-enum class SyncState {
+// GATT Standard UUIDs
+val HEART_RATE_SERVICE_UUID: UUID = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
+val HEART_RATE_MEASUREMENT_CHAR_UUID: UUID = UUID.fromString("00002d37-0000-1000-8000-00805f9b34fb")
+val CLIENT_CHARACTERISTIC_CONFIG_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+val BATTERY_SERVICE_UUID: UUID = UUID.fromString("0000180f-0000-1000-8000-00805f9b34fb")
+val BATTERY_LEVEL_CHAR_UUID: UUID = UUID.fromString("00002a19-0000-1000-8000-00805f9b34fb")
+
+enum class BLEState {
+    PERMISSION_REQUEST,
+    BLUETOOTH_OFF,
     SCANNING,
     DEVICE_LIST,
     CONNECTING,
-    DIAGNOSTICS,
-    SUCCESS
+    CONNECTED_DASHBOARD
 }
 
-data class WearableDevice(val name: String, val signal: Int, val description: String)
-data class SensorDiagnostic(val name: String, var status: String) // "pending", "running", "success"
+data class BLEDeviceItem(
+    val name: String,
+    val address: String,
+    val rssi: Int,
+    val device: BluetoothDevice? = null
+)
 
 @Composable
 fun WearableSyncScreen(
     onNavigateBack: () -> Unit
 ) {
-    var currentState by remember { mutableStateOf(SyncState.SCANNING) }
-    var selectedDevice by remember { mutableStateOf<WearableDevice?>(null) }
-    var connectionProgress by remember { mutableStateOf(0f) }
-    val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
-    // Sensor setup to read phone's hardware accelerometer
+    // Bluetooth Adapter & Manager
+    val bluetoothManager = remember { context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager }
+    val bluetoothAdapter = remember { bluetoothManager.adapter }
+
+    var bleState by remember { mutableStateOf(BLEState.PERMISSION_REQUEST) }
+    val scannedDevices = remember { mutableStateListOf<BLEDeviceItem>() }
+    var selectedDevice by remember { mutableStateOf<BLEDeviceItem?>(null) }
+    var connectionProgress by remember { mutableStateOf(0f) }
+
+    // Live telemetry values from watch (or simulated fallback)
+    var realHeartRate by remember { mutableStateOf(72) }
+    var realBatteryLevel by remember { mutableStateOf(100) }
+    var isRealConnection by remember { mutableStateOf(false) }
+
+    // Physical sensor accelerometer readings (phone fallback / active visual)
     val sensorManager = remember { context.getSystemService(Context.SENSOR_SERVICE) as SensorManager }
     val accelerometer = remember { sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) }
     var sensorValues by remember { mutableStateOf(floatArrayOf(0f, 0f, 9.81f)) }
 
-    // Heart rate and other parameter states
-    var liveHeartRate by remember { mutableStateOf(75) }
+    // Dynamic bio/gyro decoratives
     var liveSpO2 by remember { mutableStateOf(98) }
     var liveTemp by remember { mutableStateOf(36.5f) }
     var gyroValues by remember { mutableStateOf(floatArrayOf(0f, 0f, 0f)) }
 
-    val devices = listOf(
-        WearableDevice("Redmi Watch 5 Active", 90, "Dispositivo actual de pruebas de parámetros"),
-        WearableDevice("Galaxy Watch 8 / Wear OS", 95, "Reloj objetivo de desarrollo final"),
-        WearableDevice("Galaxy Watch 6 (Wear OS)", 72, "Dispositivo secundario detectado")
-    )
+    // Bluetooth connection handles
+    var activeGatt by remember { mutableStateOf<BluetoothGatt?>(null) }
 
-    var diagnostics by remember {
-        mutableStateOf(
-            listOf(
-                SensorDiagnostic("Acelerómetro Triaxial (Fuerza G)", "pending"),
-                SensorDiagnostic("Giroscopio (Velocidad Angular)", "pending"),
-                SensorDiagnostic("Ritmo Cardíaco & SpO2", "pending"),
-                SensorDiagnostic("GPS Integrado", "pending"),
-                SensorDiagnostic("Termómetro Corporal", "pending")
+    // Helper: list of required permissions
+    val requiredPermissions = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            arrayOf(
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.ACCESS_FINE_LOCATION
             )
-        )
+        } else {
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION
+            )
+        }
     }
 
-    // Accelerometer listener lifecycle
-    DisposableEffect(currentState) {
-        if (currentState == SyncState.DIAGNOSTICS || currentState == SyncState.SUCCESS) {
+    // Check permission helper
+    fun hasAllPermissions(): Boolean {
+        return requiredPermissions.all {
+            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    // Permission launcher
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissionsMap ->
+        val granted = permissionsMap.values.all { it }
+        if (granted) {
+            bleState = if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
+                BLEState.BLUETOOTH_OFF
+            } else {
+                BLEState.SCANNING
+            }
+        }
+    }
+
+    // Check permissions on start
+    LaunchedEffect(Unit) {
+        if (hasAllPermissions()) {
+            bleState = if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
+                BLEState.BLUETOOTH_OFF
+            } else {
+                BLEState.SCANNING
+            }
+        } else {
+            bleState = BLEState.PERMISSION_REQUEST
+        }
+    }
+
+    // Accelerometer listener lifecycle (Active in Dashboard/HUD)
+    DisposableEffect(bleState) {
+        if (bleState == BLEState.CONNECTED_DASHBOARD) {
             val listener = object : SensorEventListener {
                 override fun onSensorChanged(event: SensorEvent?) {
                     if (event != null && event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
@@ -103,77 +176,222 @@ fun WearableSyncScreen(
         }
     }
 
-    // Biometrics and gyro fluctuations
-    LaunchedEffect(currentState) {
-        if (currentState == SyncState.DIAGNOSTICS || currentState == SyncState.SUCCESS) {
+    // Dynamic bio/gyro updates
+    LaunchedEffect(bleState) {
+        if (bleState == BLEState.CONNECTED_DASHBOARD) {
             while (true) {
-                delay(1000)
-                liveHeartRate = (72..84).random()
+                delay(1200)
                 liveSpO2 = (97..99).random()
                 liveTemp = 36.4f + (0..3).random() / 10.0f
                 gyroValues = floatArrayOf(
-                    (-5..5).random() / 10f,
-                    (-5..5).random() / 10f,
-                    (-5..5).random() / 10f
+                    (-8..8).random() / 10f,
+                    (-8..8).random() / 10f,
+                    (-8..8).random() / 10f
                 )
+                // If it is simulated connection, fluctuate HR
+                if (!isRealConnection) {
+                    realHeartRate = (68..88).random()
+                }
             }
         }
     }
 
-    // Trigger state machines
-    LaunchedEffect(currentState) {
-        if (currentState == SyncState.SCANNING) {
-            delay(3000)
-            currentState = SyncState.DEVICE_LIST
-        } else if (currentState == SyncState.CONNECTING) {
-            connectionProgress = 0f
-            while (connectionProgress < 1.0f) {
-                delay(30)
-                connectionProgress += 0.02f
-            }
-            currentState = SyncState.DIAGNOSTICS
-        } else if (currentState == SyncState.DIAGNOSTICS) {
-            // Sequential diagnostics simulation
-            diagnostics = diagnostics.map { it.copy(status = "pending") }
-            diagnostics.indices.forEach { index ->
-                delay(200)
-                // Mark as running
-                diagnostics = diagnostics.toMutableList().apply {
-                    this[index] = this[index].copy(status = "running")
+    // Real BLE Scan Logic
+    LaunchedEffect(bleState) {
+        if (bleState == BLEState.SCANNING && bluetoothAdapter != null && bluetoothAdapter.isEnabled) {
+            scannedDevices.clear()
+            
+            // Add custom simulated fallback watch so they can test even if Bluetooth has no hardware near
+            scannedDevices.add(
+                BLEDeviceItem(
+                    name = "Samsung Galaxy Watch 6 (Simulado)",
+                    address = "AA:BB:CC:DD:EE:FF",
+                    rssi = -60
+                )
+            )
+
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                val scanner = bluetoothAdapter.bluetoothLeScanner
+                if (scanner != null) {
+                    val scanCallback = object : ScanCallback() {
+                        override fun onScanResult(callbackType: Int, result: ScanResult?) {
+                            if (result != null && result.device != null) {
+                                val name = result.device.name ?: "Dispositivo desconocido"
+                                val address = result.device.address
+                                val rssi = result.rssi
+                                
+                                // Avoid duplicates
+                                if (scannedDevices.none { it.address == address }) {
+                                    scannedDevices.add(BLEDeviceItem(name, address, rssi, result.device))
+                                }
+                            }
+                        }
+                    }
+
+                    // Scan for 10 seconds, then transition to list automatically if scanned something
+                    scanner.startScan(scanCallback)
+                    delay(5000)
+                    scanner.stopScan(scanCallback)
+                    
+                    if (bleState == BLEState.SCANNING) {
+                        bleState = BLEState.DEVICE_LIST
+                    }
+                } else {
+                    bleState = BLEState.DEVICE_LIST
                 }
-                delay(1200)
-                // Mark as success
-                diagnostics = diagnostics.toMutableList().apply {
-                    this[index] = this[index].copy(status = "success")
-                }
+            } else {
+                bleState = BLEState.DEVICE_LIST
             }
-            delay(1000)
-            currentState = SyncState.SUCCESS
         }
     }
 
-    // Calculate dynamic G-Force based on physical accelerometer readings
+    // GATT Connection Callback
+    val gattCallback = remember {
+        object : BluetoothGattCallback() {
+            override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
+                if (newState == BluetoothProfile.STATE_CONNECTED) {
+                    gatt?.discoverServices()
+                } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    isRealConnection = false
+                    activeGatt = null
+                }
+            }
+
+            override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
+                if (status == BluetoothGatt.GATT_SUCCESS && gatt != null) {
+                    // Try subscribing to Heart Rate Service
+                    val hrService = gatt.getService(HEART_RATE_SERVICE_UUID)
+                    if (hrService != null) {
+                        val hrChar = hrService.getCharacteristic(HEART_RATE_MEASUREMENT_CHAR_UUID)
+                        if (hrChar != null) {
+                            gatt.setCharacteristicNotification(hrChar, true)
+                            val descriptor = hrChar.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG_UUID)
+                            if (descriptor != null) {
+                                descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                                gatt.writeDescriptor(descriptor)
+                            }
+                        }
+                    }
+
+                    // Try reading Battery Service
+                    val batteryService = gatt.getService(BATTERY_SERVICE_UUID)
+                    if (batteryService != null) {
+                        val batteryChar = batteryService.getCharacteristic(BATTERY_LEVEL_CHAR_UUID)
+                        if (batteryChar != null) {
+                            gatt.readCharacteristic(batteryChar)
+                        }
+                    }
+                }
+            }
+
+            override fun onCharacteristicChanged(
+                gatt: BluetoothGatt,
+                characteristic: android.bluetooth.BluetoothGattCharacteristic,
+                value: ByteArray
+            ) {
+                if (characteristic.uuid == HEART_RATE_MEASUREMENT_CHAR_UUID) {
+                    val flag = value[0].toInt()
+                    val hr = if ((flag and 0x01) != 0) {
+                        // 16-bit
+                        ((value[2].toInt() and 0xFF) shl 8) or (value[1].toInt() and 0xFF)
+                    } else {
+                        // 8-bit
+                        value[1].toInt() and 0xFF
+                    }
+                    realHeartRate = hr
+                }
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun onCharacteristicRead(
+                gatt: BluetoothGatt?,
+                characteristic: android.bluetooth.BluetoothGattCharacteristic?,
+                status: Int
+            ) {
+                if (status == BluetoothGatt.GATT_SUCCESS && characteristic != null) {
+                    if (characteristic.uuid == BATTERY_LEVEL_CHAR_UUID) {
+                        realBatteryLevel = characteristic.value[0].toInt()
+                    }
+                }
+            }
+        }
+    }
+
+    // Connect function
+    fun connectToDevice(deviceItem: BLEDeviceItem) {
+        bleState = BLEState.CONNECTING
+        isRealConnection = deviceItem.device != null
+
+        if (deviceItem.device != null && ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+            activeGatt = deviceItem.device.connectGatt(context, false, gattCallback)
+            coroutineScope.launch {
+                connectionProgress = 0f
+                while (connectionProgress < 1.0f) {
+                    delay(50)
+                    connectionProgress += 0.05f
+                }
+                bleState = BLEState.CONNECTED_DASHBOARD
+            }
+        } else {
+            // Simulated connection simulation path
+            coroutineScope.launch {
+                connectionProgress = 0f
+                while (connectionProgress < 1.0f) {
+                    delay(30)
+                    connectionProgress += 0.03f
+                }
+                realHeartRate = (70..80).random()
+                realBatteryLevel = (85..99).random()
+                bleState = BLEState.CONNECTED_DASHBOARD
+            }
+        }
+    }
+
+    // Clean connection on dispose
+    DisposableEffect(Unit) {
+        onDispose {
+            activeGatt?.disconnect()
+            activeGatt?.close()
+        }
+    }
+
+    // Accelerometer math
     val ax = sensorValues[0] / 9.81f
     val ay = sensorValues[1] / 9.81f
     val az = sensorValues[2] / 9.81f
     val gForce = sqrt(ax * ax + ay * ay + az * az)
 
-    // Radar scan pulse animations
+    // Heart beat animation spec
+    val pulseTransition = rememberInfiniteTransition(label = "pulse")
+    val heartbeatScale by pulseTransition.animateFloat(
+        initialValue = 0.95f,
+        targetValue = 1.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = (60000 / realHeartRate).coerceIn(400, 1200),
+                easing = FastOutLinearInEasing
+            ),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "scale"
+    )
+
+    // Radar scan lines animations
     val infiniteTransition = rememberInfiniteTransition(label = "radar")
     val pulseScale1 by infiniteTransition.animateFloat(
-        initialValue = 0.5f,
-        targetValue = 1.8f,
+        initialValue = 0.3f,
+        targetValue = 1.9f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = LinearEasing),
+            animation = tween(2500, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "scale1"
     )
     val pulseAlpha1 by infiniteTransition.animateFloat(
-        initialValue = 0.8f,
+        initialValue = 0.9f,
         targetValue = 0.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = LinearEasing),
+            animation = tween(2500, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "alpha1"
@@ -184,7 +402,7 @@ fun WearableSyncScreen(
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(DarkBlue, Color(0xFF040D17))
+                    colors = listOf(DarkBlue, Color(0xFF02070D))
                 )
             )
             .systemBarsPadding()
@@ -196,13 +414,13 @@ fun WearableSyncScreen(
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Header
+            // Header Top Bar
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "← Atrás",
+                    text = "← Volver",
                     color = TealPrimary,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
@@ -210,50 +428,129 @@ fun WearableSyncScreen(
                 )
                 Spacer(modifier = Modifier.width(24.dp))
                 Text(
-                    text = "Sincronizar Wearable",
+                    text = "Consola Wear OS BLE",
                     fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.ExtraBold,
                     color = Color.White
                 )
             }
 
-            Spacer(modifier = Modifier.height(30.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            when (currentState) {
-                SyncState.SCANNING -> {
+            when (bleState) {
+                BLEState.PERMISSION_REQUEST -> {
                     Text(
-                        text = "Buscando dispositivos Wearables cercanos...",
+                        text = "Permisos de Conectividad Requeridos",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "ImpactX requiere permisos de Bluetooth Cercano y Ubicación para encontrar y conectarse al Samsung Galaxy Watch 6 de forma física.",
+                        color = GrayMuted,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(40.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .size(100.dp)
+                            .clip(CircleShape)
+                            .background(TealPrimary.copy(alpha = 0.1f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("📡", fontSize = 48.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(40.dp))
+
+                    Button(
+                        onClick = {
+                            permissionLauncher.launch(requiredPermissions)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
+                    ) {
+                        Text("Conceder Permisos", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                BLEState.BLUETOOTH_OFF -> {
+                    Text(
+                        text = "Bluetooth Desactivado",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Por favor activa el Bluetooth desde los ajustes rápidos de tu celular para iniciar la búsqueda física de wearables.",
+                        color = GrayMuted,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(45.dp))
+
+                    Button(
+                        onClick = {
+                            if (hasAllPermissions() && bluetoothAdapter != null && bluetoothAdapter.isEnabled) {
+                                bleState = BLEState.SCANNING
+                            } else if (!hasAllPermissions()) {
+                                bleState = BLEState.PERMISSION_REQUEST
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
+                    ) {
+                        Text("Reintentar Detección", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                BLEState.SCANNING -> {
+                    Text(
+                        text = "Escaneando Relojes Inteligentes...",
                         color = Color.White,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center
                     )
                     Text(
-                        text = "Asegúrate de que el Bluetooth de tu reloj esté activado.",
+                        text = "Buscando señales BLE activas (Wear OS).",
                         color = GrayMuted,
                         fontSize = 13.sp,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(top = 8.dp)
+                        modifier = Modifier.padding(top = 4.dp)
                     )
 
                     Spacer(modifier = Modifier.height(50.dp))
 
-                    // Radar animation using Canvas
+                    // Radar Scanning UI
                     Box(
-                        modifier = Modifier.size(220.dp),
+                        modifier = Modifier.size(200.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Canvas(modifier = Modifier.fillMaxSize()) {
                             val centerOffset = androidx.compose.ui.geometry.Offset(size.width / 2, size.height / 2)
                             
-                            // Pulse circle
+                            // Pulse Circle
                             drawCircle(
                                 color = TealPrimary.copy(alpha = pulseAlpha1),
                                 radius = (size.width / 2) * pulseScale1,
                                 center = centerOffset
                             )
-                            
-                            // Grid circles
+
                             drawCircle(
                                 color = TealPrimary.copy(alpha = 0.1f),
                                 radius = size.width / 2,
@@ -266,61 +563,57 @@ fun WearableSyncScreen(
                                 center = centerOffset,
                                 style = Stroke(width = 1.dp.toPx())
                             )
-                            drawCircle(
-                                color = TealPrimary.copy(alpha = 0.3f),
-                                radius = size.width / 5,
-                                center = centerOffset,
-                                style = Stroke(width = 1.dp.toPx())
-                            )
                         }
 
-                        // Core watch icon center
                         Box(
                             modifier = Modifier
                                 .size(70.dp)
                                 .clip(CircleShape)
-                                .background(Brush.radialGradient(listOf(TealPrimary, Color(0xFF006666)))),
+                                .background(Brush.radialGradient(listOf(TealPrimary, Color(0xFF005555)))),
                             contentAlignment = Alignment.Center
                         ) {
                             Text("⌚", fontSize = 32.sp, color = Color.White)
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(40.dp))
-                    
+                    Spacer(modifier = Modifier.height(50.dp))
                     CircularProgressIndicator(color = TealPrimary, modifier = Modifier.size(24.dp))
                 }
 
-                SyncState.DEVICE_LIST -> {
+                BLEState.DEVICE_LIST -> {
                     Text(
-                        text = "Dispositivos Bluetooth Encontrados",
+                        text = "Relojes Encontrados",
                         color = Color.White,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.align(Alignment.Start)
                     )
                     Text(
-                        text = "Selecciona el reloj que deseas vincular para la telemetría de seguridad.",
+                        text = "Selecciona tu Galaxy Watch para sincronizar la telemetría cardíaca.",
                         color = GrayMuted,
                         fontSize = 13.sp,
-                        modifier = Modifier.align(Alignment.Start).padding(top = 4.dp, bottom = 16.dp)
+                        modifier = Modifier
+                            .align(Alignment.Start)
+                            .padding(top = 4.dp, bottom = 16.dp)
                     )
 
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        devices.forEach { device ->
+                        scannedDevices.forEach { deviceItem ->
+                            val isSimulated = deviceItem.device == null
+
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable {
-                                        selectedDevice = device
-                                        currentState = SyncState.CONNECTING
-                                    },
+                                    .clickable { connectToDevice(deviceItem) },
                                 shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF102238)),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF0E1A29)),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isSimulated) Color.White.copy(alpha = 0.05f) else TealPrimary.copy(alpha = 0.5f)
+                                )
                             ) {
                                 Row(
                                     modifier = Modifier.padding(16.dp),
@@ -328,60 +621,72 @@ fun WearableSyncScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = deviceItem.name,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White,
+                                                fontSize = 15.sp
+                                            )
+                                            if (!isSimulated) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(4.dp))
+                                                        .background(TealPrimary.copy(alpha = 0.15f))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "FÍSICO",
+                                                        fontSize = 9.sp,
+                                                        color = TealPrimary,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+                                        }
                                         Text(
-                                            text = device.name,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White,
-                                            fontSize = 15.sp
-                                        )
-                                        Text(
-                                            text = device.description,
-                                            fontSize = 12.sp,
+                                            text = "MAC: ${deviceItem.address}",
+                                            fontSize = 11.sp,
                                             color = GrayMuted,
-                                            modifier = Modifier.padding(top = 2.dp)
+                                            modifier = Modifier.padding(top = 4.dp)
                                         )
                                     }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text(
-                                            text = "📶 ${device.signal}%",
-                                            color = TealPrimary,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp
-                                        )
-                                        Text(
-                                            text = if (device.signal > 85) "Fuerte" else "Media",
-                                            fontSize = 10.sp,
-                                            color = GrayMuted
-                                        )
-                                    }
+                                    Text(
+                                        text = "📶 ${deviceItem.rssi} dBm",
+                                        color = if (deviceItem.rssi > -70) Color(0xFF22C55E) else GrayMuted,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 12.sp
+                                    )
                                 }
                             }
                         }
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
-                    
+
                     OutlinedButton(
-                        onClick = { currentState = SyncState.SCANNING },
-                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        onClick = { bleState = BLEState.SCANNING },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp),
                         shape = RoundedCornerShape(12.dp),
                         border = BorderStroke(1.dp, TealPrimary),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = TealPrimary)
                     ) {
-                        Text("Buscar de Nuevo", fontWeight = FontWeight.Bold)
+                        Text("Escanear Nuevamente", fontWeight = FontWeight.Bold)
                     }
                 }
 
-                SyncState.CONNECTING -> {
+                BLEState.CONNECTING -> {
                     Text(
-                        text = "Vinculando dispositivo...",
+                        text = "Conectando al Smartwatch...",
                         color = Color.White,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Estableciendo enlace de cifrado con ${selectedDevice?.name}...",
+                        text = "Leyendo tablas de servicios GATT e iniciando notificaciones...",
                         color = GrayMuted,
                         fontSize = 13.sp,
                         textAlign = TextAlign.Center,
@@ -390,7 +695,7 @@ fun WearableSyncScreen(
 
                     Spacer(modifier = Modifier.height(60.dp))
 
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(150.dp)) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(140.dp)) {
                         CircularProgressIndicator(
                             progress = connectionProgress,
                             color = TealPrimary,
@@ -399,8 +704,8 @@ fun WearableSyncScreen(
                         )
                         Text(
                             text = "${(connectionProgress * 100).toInt()}%",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.ExtraBold,
                             color = Color.White
                         )
                     }
@@ -408,129 +713,244 @@ fun WearableSyncScreen(
                     Spacer(modifier = Modifier.height(60.dp))
                 }
 
-                SyncState.DIAGNOSTICS -> {
-                    Text(
-                        text = "Diagnóstico de Parámetros y Sensores",
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.align(Alignment.Start)
-                    )
-                    Text(
-                        text = "Probando la captura de datos fisiológicos y mecánicos en tiempo real. Agita tu teléfono para probar el acelerómetro.",
-                        color = GrayMuted,
-                        fontSize = 13.sp,
-                        modifier = Modifier.align(Alignment.Start).padding(top = 4.dp, bottom = 20.dp)
-                    )
+                BLEState.CONNECTED_DASHBOARD -> {
+                    // STUNNING futuristic HUD Cockpit view
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    // Pulse Card
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, TealPrimary.copy(alpha = 0.3f), RoundedCornerShape(20.dp)),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF091424))
                     ) {
-                        diagnostics.forEachIndexed { index, diag ->
-                            val detailText = when (index) {
-                                0 -> String.format("Ejes: Ax=%.2fG, Ay=%.2fG, Az=%.2fG (Total: %.2fG)", ax, ay, az, gForce)
-                                1 -> String.format("Rotación: Pitch=%.1f°/s, Roll=%.1f°/s, Yaw=%.1f°/s", gyroValues[0], gyroValues[1], gyroValues[2])
-                                2 -> "Ritmo: $liveHeartRate bpm | Oxígeno: $liveSpO2% SpO2"
-                                3 -> "Coordenadas: Lat 20.0841, Lon -99.3442"
-                                else -> String.format("Temperatura corporal: %.1f °C", liveTemp)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "MONITOR CARDÍACO EN VIVO",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = TealPrimary,
+                                letterSpacing = 1.5.sp
+                            )
+
+                            Spacer(modifier = Modifier.height(20.dp))
+
+                            // Heart Rate circle with dynamic heartbeat scale
+                            Box(
+                                modifier = Modifier
+                                    .size(160.dp)
+                                    .align(Alignment.CenterHorizontally),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                // Background circular ring
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    drawCircle(
+                                        color = Color.White.copy(alpha = 0.05f),
+                                        style = Stroke(width = 8.dp.toPx())
+                                    )
+                                    // Segmented accent arcs
+                                    drawArc(
+                                        color = TealPrimary.copy(alpha = 0.4f),
+                                        startAngle = -90f,
+                                        sweepAngle = (realHeartRate.toFloat() / 200f * 360f).coerceAtMost(360f),
+                                        useCenter = false,
+                                        style = Stroke(width = 6.dp.toPx())
+                                    )
+                                }
+
+                                // Pulsing Heart Icon & BPM Text
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = "❤️",
+                                        fontSize = 32.sp,
+                                        modifier = Modifier.scale(heartbeatScale)
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "$realHeartRate",
+                                        fontSize = 44.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        text = "LPM (BPM)",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = GrayMuted
+                                    )
+                                }
                             }
 
-                            Card(
+                            Spacer(modifier = Modifier.height(20.dp))
+
+                            Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF102238).copy(alpha = 0.5f))
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = diag.name,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White,
-                                            fontSize = 14.sp
-                                        )
-                                        Text(
-                                            text = detailText,
-                                            fontSize = 12.sp,
-                                            color = if (diag.status == "success") TealPrimary else GrayMuted,
-                                            modifier = Modifier.padding(top = 2.dp),
-                                            fontWeight = if (diag.status == "success") FontWeight.SemiBold else FontWeight.Normal
-                                        )
+                                Text("Fuente de datos:", fontSize = 12.sp, color = GrayMuted)
+                                Text(
+                                    text = if (isRealConnection) "🟢 GALAXY WATCH 6 REAL (GATT)" else "🟡 SIMULACIÓN SENSOR WATCH",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isRealConnection) Color(0xFF22C55E) else Color(0xFFEAB308)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Secondary Vital Grid Card
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        // Battery Card
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF091424))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text("🔋 Batería Reloj", fontSize = 11.sp, color = GrayMuted, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "$realBatteryLevel%",
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+
+                        // SpO2 Card
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF091424))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text("🩸 Oxígeno SpO2", fontSize = 11.sp, color = GrayMuted, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "$liveSpO2%",
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Kinetic Sensor Card (Accelerometer & Gyroscope)
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF091424))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp)
+                        ) {
+                            Text(
+                                text = "MONITOR KINÉTICO (ACELERÓMETRO Y GIROSCOPIO)",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = TealPrimary,
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column {
+                                    Text("Fuerza G Física", fontSize = 11.sp, color = GrayMuted)
+                                    Text(
+                                        text = String.format("%.2f G", gForce),
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (gForce > 2.5f) Color(0xFFEF4444) else Color.White
+                                    )
+                                }
+                                Column {
+                                    Text("Ejes Aceleración", fontSize = 11.sp, color = GrayMuted)
+                                    Text(
+                                        text = String.format("X:%.1f Y:%.1f Z:%.1f", ax * 9.81, ay * 9.81, az * 9.81),
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Custom Graphic Canvas to represent active movement
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(40.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color.Black.copy(alpha = 0.2f))
+                            ) {
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    val w = size.width
+                                    val h = size.height
+                                    val strokeWidth = 2.dp.toPx()
+
+                                    // Render wavy pattern based on raw G-force changes
+                                    val p = androidx.compose.ui.graphics.Path().apply {
+                                        moveTo(0f, h / 2f)
+                                        for (i in 0..10) {
+                                            val xPos = (w / 10f) * i
+                                            val displacement = ((gForce - 1.0f) * 15f * if (i % 2 == 0) 1f else -1f).coerceIn(-h/2, h/2)
+                                            lineTo(xPos, (h / 2f) + displacement)
+                                        }
                                     }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    when (diag.status) {
-                                        "pending" -> {
-                                            Text("En espera", fontSize = 12.sp, color = GrayMuted)
-                                        }
-                                        "running" -> {
-                                            CircularProgressIndicator(
-                                                color = TealPrimary,
-                                                modifier = Modifier.size(16.dp),
-                                                strokeWidth = 2.dp
-                                            )
-                                        }
-                                        "success" -> {
-                                            Text(
-                                                text = "✓ OK",
-                                                color = Color(0xFF22C55E),
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.sp
-                                            )
-                                        }
-                                    }
+                                    drawPath(
+                                        path = p,
+                                        color = TealPrimary.copy(alpha = 0.7f),
+                                        style = Stroke(width = strokeWidth)
+                                    )
                                 }
                             }
                         }
                     }
-                }
-
-                SyncState.SUCCESS -> {
-                    Spacer(modifier = Modifier.height(20.dp))
-                    
-                    Box(
-                        modifier = Modifier
-                            .size(100.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF22C55E).copy(alpha = 0.15f))
-                            .border(2.dp, Color(0xFF22C55E), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("✓", fontSize = 48.sp, fontWeight = FontWeight.Bold, color = Color(0xFF22C55E))
-                    }
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    Text(
-                        text = "¡Dispositivo Sincronizado!",
-                        color = Color.White,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center
-                    )
-                    
-                    Text(
-                        text = "${selectedDevice?.name} está enlazado correctamente como monitor activo.\n\nFuerza G actual: ${String.format("%.2fG", gForce)}\nSignos Vitales: $liveHeartRate bpm, SpO2: $liveSpO2%\nTemperatura: ${String.format("%.1f°C", liveTemp)}\n\nLos parámetros se enviarán a tu red de emergencia en caso de colisión.",
-                        color = GrayMuted,
-                        fontSize = 14.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(30.dp))
-
                     Button(
-                        onClick = onNavigateBack,
+                        onClick = {
+                            activeGatt?.disconnect()
+                            activeGatt?.close()
+                            activeGatt = null
+                            isRealConnection = false
+                            bleState = BLEState.SCANNING
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(56.dp),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0E1A29))
                     ) {
-                        Text("Volver al Inicio", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text("Desconectar Reloj", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
             }
