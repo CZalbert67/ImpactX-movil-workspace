@@ -55,7 +55,7 @@ fun MainNavigation() {
             onNavigateToVehicle = { backStack.add(Vehicle) },
             onNavigateToContacts = { backStack.add(Contacts) },
             onNavigateToPlans = { backStack.add(Plans) },
-            onStartTrip = { backStack.add(ActiveTrip) },
+            onNavigateToWearableSync = { backStack.add(WearableSync) },
             onLogout = { 
               backStack.removeLastOrNull() // go back to welcome
             }
@@ -98,6 +98,11 @@ fun MainNavigation() {
         entry<EmergencyChat> {
           EmergencyChatScreen(
             onCloseChat = { backStack.removeLastOrNull() }
+          )
+        }
+        entry<WearableSync> {
+          WearableSyncScreen(
+            onNavigateBack = { backStack.removeLastOrNull() }
           )
         }
       },
