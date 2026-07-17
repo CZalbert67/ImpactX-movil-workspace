@@ -20,31 +20,54 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VehicleScreen(
     currentPlan: String,
     onNavigateBack: () -> Unit,
     onNavigateToPlans: () -> Unit
 ) {
-    // Determine limit
+    // Determine vehicle limit based on plan
     val maxVehicles = when (currentPlan) {
         "Básico" -> 1
         "Premium" -> 3
         else -> 999 // Unlimited
     }
 
-    var type by remember { mutableStateOf("") }
-    var brand by remember { mutableStateOf("") }
-    var model by remember { mutableStateOf("") }
+    // Car brand and model catalog (Only 4-wheeled vehicles, no motorcycles)
+    val carCatalog = remember {
+        mapOf(
+            "Toyota" to listOf("Corolla", "RAV4", "Hilux", "Prius", "Yaris"),
+            "Mazda" to listOf("Mazda 3", "CX-5", "MX-5", "Mazda 6", "CX-30"),
+            "Nissan" to listOf("Versa", "Sentra", "March", "Kicks", "Frontier"),
+            "Chevrolet" to listOf("Aveo", "Onix", "Tracker", "Captiva", "Silverado"),
+            "Ford" to listOf("Focus", "Explorer", "Mustang", "Ranger", "Lobo"),
+            "Volkswagen" to listOf("Jetta", "Golf", "Tiguan", "Polo", "Taos"),
+            "Honda" to listOf("Civic", "Accord", "CR-V", "HR-V", "City"),
+            "Kia" to listOf("Forte", "Sportage", "Rio", "Seltos", "Soul"),
+            "Hyundai" to listOf("Tucson", "Elantra", "Accent", "Creta", "Santa Fe"),
+            "BMW" to listOf("Serie 3", "Serie 5", "X3", "X5", "M4"),
+            "Audi" to listOf("A3", "A4", "Q3", "Q5", "e-tron"),
+            "Mercedes-Benz" to listOf("Clase C", "Clase E", "GLA", "GLC", "GLE")
+        )
+    }
+
+    // Form inputs state
+    var selectedBrand by remember { mutableStateOf("") }
+    var selectedModel by remember { mutableStateOf("") }
     var year by remember { mutableStateOf("") }
     var plate by remember { mutableStateOf("") }
     var mainUse by remember { mutableStateOf("") }
     var avgSpeed by remember { mutableStateOf("") }
 
+    // Dropdowns UI state
+    var brandExpanded by remember { mutableStateOf(false) }
+    var modelExpanded by remember { mutableStateOf(false) }
+
     var vehicleList by remember {
         mutableStateOf(
             listOf(
-                VehicleItem("SUV", "Toyota", "RAV4", "2024", "XYZ-789-A", "Urbano", "55 km/h")
+                VehicleItem("Sedán", "Toyota", "Corolla", "2024", "XYZ-789-A", "Urbano", "55 km/h")
             )
         )
     }
@@ -180,7 +203,7 @@ fun VehicleScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text("Placas: ${vehicle.plate}", fontSize = 13.sp, color = GrayMuted)
-                                Text("Velocidad Promedio: ${vehicle.avgSpeed}", fontSize = 13.sp, color = GrayMuted)
+                                Text("Uso: ${vehicle.mainUse}", fontSize = 13.sp, color = GrayMuted)
                             }
                         }
                     }
@@ -224,7 +247,7 @@ fun VehicleScreen(
                 }
             } else {
                 Text(
-                    text = "AÑADIR NUEVO VEHÍCULO",
+                    text = "REGISTRAR AUTOMÓVIL (4 LLANTAS)",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = GrayMuted,
@@ -233,50 +256,98 @@ fun VehicleScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                OutlinedTextField(
-                    value = type,
-                    onValueChange = { type = it },
-                    label = { Text("Tipo (Auto, SUV, Moto...)") },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = TealPrimary,
-                        unfocusedBorderColor = GrayMuted,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
-                    ),
-                    singleLine = true
-                )
+                // Brand ExposedDropdownMenuBox
+                ExposedDropdownMenuBox(
+                    expanded = brandExpanded,
+                    onExpandedChange = { brandExpanded = it }
+                ) {
+                    OutlinedTextField(
+                        value = selectedBrand.ifBlank { "Seleccionar Marca" },
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Marca") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = brandExpanded) },
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = TealPrimary,
+                            unfocusedBorderColor = GrayMuted,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedLabelColor = TealPrimary,
+                            unfocusedLabelColor = GrayMuted
+                        )
+                    )
+                    ExposedDropdownMenu(
+                        expanded = brandExpanded,
+                        onDismissRequest = { brandExpanded = false },
+                        modifier = Modifier.background(Color(0xFF102238))
+                    ) {
+                        carCatalog.keys.forEach { brandName ->
+                            DropdownMenuItem(
+                                text = { Text(brandName, color = Color.White) },
+                                onClick = {
+                                    selectedBrand = brandName
+                                    selectedModel = "" // Reset model selection
+                                    brandExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
 
-                OutlinedTextField(
-                    value = brand,
-                    onValueChange = { brand = it },
-                    label = { Text("Marca (Toyota, Mazda, Ford...)") },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = TealPrimary,
-                        unfocusedBorderColor = GrayMuted,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
-                    ),
-                    singleLine = true
-                )
-
-                OutlinedTextField(
-                    value = model,
-                    onValueChange = { model = it },
-                    label = { Text("Modelo (RAV4, CX-5...)") },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = TealPrimary,
-                        unfocusedBorderColor = GrayMuted,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
-                    ),
-                    singleLine = true
-                )
+                // Model ExposedDropdownMenuBox
+                val modelsList = carCatalog[selectedBrand] ?: emptyList()
+                ExposedDropdownMenuBox(
+                    expanded = modelExpanded && selectedBrand.isNotEmpty(),
+                    onExpandedChange = {
+                        if (selectedBrand.isNotEmpty()) {
+                            modelExpanded = it
+                        }
+                    }
+                ) {
+                    OutlinedTextField(
+                        value = selectedModel.ifBlank { if (selectedBrand.isEmpty()) "Selecciona marca primero" else "Seleccionar Modelo" },
+                        onValueChange = {},
+                        readOnly = true,
+                        enabled = selectedBrand.isNotEmpty(),
+                        label = { Text("Modelo") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelExpanded) },
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = TealPrimary,
+                            unfocusedBorderColor = GrayMuted,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedLabelColor = TealPrimary,
+                            unfocusedLabelColor = GrayMuted,
+                            disabledBorderColor = GrayMuted.copy(alpha = 0.3f),
+                            disabledTextColor = GrayMuted
+                        )
+                    )
+                    ExposedDropdownMenu(
+                        expanded = modelExpanded && selectedBrand.isNotEmpty(),
+                        onDismissRequest = { modelExpanded = false },
+                        modifier = Modifier.background(Color(0xFF102238))
+                    ) {
+                        modelsList.forEach { modelName ->
+                            DropdownMenuItem(
+                                text = { Text(modelName, color = Color.White) },
+                                onClick = {
+                                    selectedModel = modelName
+                                    modelExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
 
                 OutlinedTextField(
                     value = year,
@@ -288,7 +359,9 @@ fun VehicleScreen(
                         focusedBorderColor = TealPrimary,
                         unfocusedBorderColor = GrayMuted,
                         focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
+                        unfocusedTextColor = Color.White,
+                        focusedLabelColor = TealPrimary,
+                        unfocusedLabelColor = GrayMuted
                     ),
                     singleLine = true
                 )
@@ -303,7 +376,9 @@ fun VehicleScreen(
                         focusedBorderColor = TealPrimary,
                         unfocusedBorderColor = GrayMuted,
                         focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
+                        unfocusedTextColor = Color.White,
+                        focusedLabelColor = TealPrimary,
+                        unfocusedLabelColor = GrayMuted
                     ),
                     singleLine = true
                 )
@@ -318,7 +393,9 @@ fun VehicleScreen(
                         focusedBorderColor = TealPrimary,
                         unfocusedBorderColor = GrayMuted,
                         focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
+                        unfocusedTextColor = Color.White,
+                        focusedLabelColor = TealPrimary,
+                        unfocusedLabelColor = GrayMuted
                     ),
                     singleLine = true
                 )
@@ -333,7 +410,9 @@ fun VehicleScreen(
                         focusedBorderColor = TealPrimary,
                         unfocusedBorderColor = GrayMuted,
                         focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
+                        unfocusedTextColor = Color.White,
+                        focusedLabelColor = TealPrimary,
+                        unfocusedLabelColor = GrayMuted
                     ),
                     singleLine = true
                 )
@@ -342,11 +421,10 @@ fun VehicleScreen(
 
                 Button(
                     onClick = {
-                        if (type.isNotBlank() && brand.isNotBlank() && model.isNotBlank() && plate.isNotBlank()) {
-                            vehicleList = vehicleList + VehicleItem(type, brand, model, year, plate, mainUse, avgSpeed.ifBlank { "50 km/h" })
-                            type = ""
-                            brand = ""
-                            model = ""
+                        if (selectedBrand.isNotBlank() && selectedModel.isNotBlank() && plate.isNotBlank()) {
+                            vehicleList = vehicleList + VehicleItem("Sedán", selectedBrand, selectedModel, year, plate, mainUse.ifBlank { "Particular" }, avgSpeed.ifBlank { "50 km/h" })
+                            selectedBrand = ""
+                            selectedModel = ""
                             year = ""
                             plate = ""
                             mainUse = ""
@@ -360,7 +438,8 @@ fun VehicleScreen(
                     colors = ButtonDefaults.buttonColors(
                         containerColor = TealPrimary,
                         contentColor = Color.White
-                    )
+                    ),
+                    enabled = selectedBrand.isNotBlank() && selectedModel.isNotBlank() && plate.isNotBlank()
                 ) {
                     Text("Registrar Vehículo", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
@@ -368,13 +447,3 @@ fun VehicleScreen(
         }
     }
 }
-
-data class VehicleItem(
-    val type: String,
-    val brand: String,
-    val model: String,
-    val year: String,
-    val plate: String,
-    val mainUse: String,
-    val avgSpeed: String
-)

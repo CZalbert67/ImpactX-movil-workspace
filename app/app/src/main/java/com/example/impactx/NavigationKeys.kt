@@ -14,3 +14,4 @@ import kotlinx.serialization.Serializable
 @Serializable data object ActiveTrip : NavKey
 @Serializable data object Plans : NavKey
 @Serializable data object EmergencyChat : NavKey
+@Serializable data object WearableSync : NavKey

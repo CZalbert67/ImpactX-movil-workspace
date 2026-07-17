@@ -1,5 +1,6 @@
 package com.example.impactx.ui.screens
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,6 +15,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -24,9 +26,30 @@ fun HomeScreen(
     onNavigateToVehicle: () -> Unit,
     onNavigateToContacts: () -> Unit,
     onNavigateToPlans: () -> Unit,
-    onStartTrip: () -> Unit,
+    onNavigateToWearableSync: () -> Unit,
     onLogout: () -> Unit
 ) {
+    // Pulse animation for the active shield
+    val infiniteTransition = rememberInfiniteTransition(label = "shieldPulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.2f,
+        targetValue = 0.6f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "alpha"
+    )
+    val pulseSize by infiniteTransition.animateFloat(
+        initialValue = 110.dp.value,
+        targetValue = 130.dp.value,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "size"
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -105,116 +128,137 @@ fun HomeScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            // Main Status Banner
+            // Main Status Banner (Clickable to sync wearable)
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToWearableSync() },
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = Color(0xFF102238)
                 )
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = "Burbuja de Seguridad",
-                            fontSize = 14.sp,
-                            color = GrayMuted
-                        )
-                        Text(
-                            text = if (currentPlan == "Básico") "Funciones Limitadas" else "Monitoreo Listo",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(
-                                when (currentPlan) {
-                                    "Básico" -> Color(0xFFF59E0B).copy(alpha = 0.15f)
-                                    else -> Color(0xFF22C55E).copy(alpha = 0.15f)
-                                }
-                            )
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = if (currentPlan == "Básico") "Básico" else "Wear OS: Ok",
-                            fontSize = 12.sp,
-                            color = when (currentPlan) {
-                                "Básico" -> Color(0xFFF59E0B)
-                                else -> Color(0xFF22C55E)
-                            },
-                            fontWeight = FontWeight.Bold
-                        )
+                        Column {
+                            Text(
+                                text = "Burbuja de Seguridad",
+                                fontSize = 13.sp,
+                                color = GrayMuted
+                            )
+                            Text(
+                                text = if (currentPlan == "Básico") "Funciones Limitadas" else "Wear OS: Conectado",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    when (currentPlan) {
+                                        "Básico" -> Color(0xFFF59E0B).copy(alpha = 0.15f)
+                                        else -> Color(0xFF22C55E).copy(alpha = 0.15f)
+                                    }
+                                )
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = if (currentPlan == "Básico") "Básico" else "Autodiagnóstico Ok",
+                                fontSize = 11.sp,
+                                color = when (currentPlan) {
+                                    "Básico" -> Color(0xFFF59E0B)
+                                    else -> Color(0xFF22C55E)
+                                },
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Divider(color = Color.White.copy(alpha = 0.05f))
+                    Spacer(modifier = Modifier.height(6.dp))
+                    
+                    Text(
+                        text = "⌚ Pulsa para sincronizar o probar sensores del reloj",
+                        fontSize = 12.sp,
+                        color = TealPrimary,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.weight(0.2f))
+            Spacer(modifier = Modifier.weight(0.15f))
 
-            // Central Massive Start Trip Button
+            // Central Passive Shield/Status Representation (Replaces Start Trip Button)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .wrapContentHeight(),
                 contentAlignment = Alignment.Center
             ) {
-                // Outer glow representation
+                // Animated pulse glow rings
                 Box(
                     modifier = Modifier
-                        .size(190.dp)
+                        .size(pulseSize.dp)
                         .clip(CircleShape)
-                        .background(TealPrimary.copy(alpha = 0.1f))
+                        .background(TealPrimary.copy(alpha = pulseAlpha * 0.15f))
                 )
                 Box(
                     modifier = Modifier
-                        .size(165.dp)
+                        .size((pulseSize - 20.dp.value).dp)
                         .clip(CircleShape)
-                        .background(TealPrimary.copy(alpha = 0.2f))
+                        .background(TealPrimary.copy(alpha = pulseAlpha * 0.3f))
                 )
-                // Main Button
+                
+                // Solid center shield representation
                 Box(
                     modifier = Modifier
-                        .size(140.dp)
+                        .size(100.dp)
                         .clip(CircleShape)
                         .background(
                             Brush.radialGradient(
-                                colors = listOf(TealPrimary, Color(0xFF008080))
+                                colors = listOf(TealPrimary, Color(0xFF006666))
                             )
                         )
-                        .clickable { onStartTrip() }
-                        .border(4.dp, Color.White.copy(alpha = 0.2f), CircleShape),
+                        .border(2.dp, Color.White.copy(alpha = 0.3f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "INICIAR",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White,
-                            letterSpacing = 1.sp
-                        )
-                        Text(
-                            text = "VIAJE",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White,
-                            letterSpacing = 1.sp
-                        )
-                    }
+                    Text(
+                        text = "🛡️",
+                        fontSize = 44.sp,
+                        textAlign = TextAlign.Center
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.weight(0.3f))
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Trip instruction status text
+            Text(
+                text = "Monitoreo en Segundo Plano Activo",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "El viaje se iniciará de forma automática en cuanto comiences la actividad desde tu Smartwatch.",
+                fontSize = 13.sp,
+                color = GrayMuted,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp),
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.weight(0.2f))
 
             // Live Telemetry Mini-KPI Panel
             Row(
@@ -228,17 +272,17 @@ fun HomeScreen(
                         .weight(1f)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color(0xFF102238))
-                        .padding(16.dp),
+                        .padding(14.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = if (currentPlan == "Básico") "N/A" else "1.02 G",
-                            fontSize = 18.sp,
+                            text = if (currentPlan == "Básico") "N/A" else "75 bpm",
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
-                        Text("Fuerza G", fontSize = 12.sp, color = GrayMuted)
+                        Text("Ritmo Cardíaco", fontSize = 11.sp, color = GrayMuted)
                     }
                 }
                 Box(
@@ -246,17 +290,22 @@ fun HomeScreen(
                         .weight(1f)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color(0xFF102238))
-                        .padding(16.dp),
+                        .padding(14.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("0 km/h", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        Text("Velocidad", fontSize = 12.sp, color = GrayMuted)
+                        Text(
+                            text = if (currentPlan == "Básico") "N/A" else "98% SpO2",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text("Oxígeno", fontSize = 11.sp, color = GrayMuted)
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Quick Access Navigation Options
             Text(
@@ -266,7 +315,7 @@ fun HomeScreen(
                 color = GrayMuted,
                 letterSpacing = 1.sp
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             Column(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -278,7 +327,7 @@ fun HomeScreen(
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color(0xFF102238))
                         .clickable { onNavigateToMedical() }
-                        .padding(16.dp),
+                        .padding(14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -300,7 +349,7 @@ fun HomeScreen(
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color(0xFF102238))
                         .clickable { onNavigateToVehicle() }
-                        .padding(16.dp),
+                        .padding(14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -322,7 +371,7 @@ fun HomeScreen(
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color(0xFF102238))
                         .clickable { onNavigateToContacts() }
-                        .padding(16.dp),
+                        .padding(14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
