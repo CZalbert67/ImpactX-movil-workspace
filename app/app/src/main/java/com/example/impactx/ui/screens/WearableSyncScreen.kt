@@ -1,5 +1,10 @@
 package com.example.impactx.ui.screens
 
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -19,12 +24,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.sqrt
 
 enum class SyncState {
     SCANNING,
@@ -35,7 +42,7 @@ enum class SyncState {
 }
 
 data class WearableDevice(val name: String, val signal: Int, val description: String)
-data class SensorDiagnostic(val name: String, val paramDetail: String, var status: String) // "pending", "running", "success"
+data class SensorDiagnostic(val name: String, var status: String) // "pending", "running", "success"
 
 @Composable
 fun WearableSyncScreen(
@@ -45,6 +52,18 @@ fun WearableSyncScreen(
     var selectedDevice by remember { mutableStateOf<WearableDevice?>(null) }
     var connectionProgress by remember { mutableStateOf(0f) }
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    // Sensor setup to read phone's hardware accelerometer
+    val sensorManager = remember { context.getSystemService(Context.SENSOR_SERVICE) as SensorManager }
+    val accelerometer = remember { sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) }
+    var sensorValues by remember { mutableStateOf(floatArrayOf(0f, 0f, 9.81f)) }
+
+    // Heart rate and other parameter states
+    var liveHeartRate by remember { mutableStateOf(75) }
+    var liveSpO2 by remember { mutableStateOf(98) }
+    var liveTemp by remember { mutableStateOf(36.5f) }
+    var gyroValues by remember { mutableStateOf(floatArrayOf(0f, 0f, 0f)) }
 
     val devices = listOf(
         WearableDevice("Redmi Watch 5 Active", 90, "Dispositivo actual de pruebas de parámetros"),
@@ -55,35 +74,51 @@ fun WearableSyncScreen(
     var diagnostics by remember {
         mutableStateOf(
             listOf(
-                SensorDiagnostic("Acelerómetro Triaxial (Fuerza G)", "Ejes: Ax=0.02G, Ay=0.04G, Az=0.99G (Total: 1.05G)", "pending"),
-                SensorDiagnostic("Giroscopio (Velocidad Angular)", "Rotación: Pitch=0°/s, Roll=0°/s, Yaw=0°/s", "pending"),
-                SensorDiagnostic("Ritmo Cardíaco & SpO2", "Ritmo: 75 bpm | Saturación: 98% SpO2", "pending"),
-                SensorDiagnostic("GPS Integrado", "Coordenadas: Lat 20.0841, Lon -99.3442", "pending"),
-                SensorDiagnostic("Termómetro Corporal", "Temperatura: 36.5 °C", "pending")
+                SensorDiagnostic("Acelerómetro Triaxial (Fuerza G)", "pending"),
+                SensorDiagnostic("Giroscopio (Velocidad Angular)", "pending"),
+                SensorDiagnostic("Ritmo Cardíaco & SpO2", "pending"),
+                SensorDiagnostic("GPS Integrado", "pending"),
+                SensorDiagnostic("Termómetro Corporal", "pending")
             )
         )
     }
 
-    // Radar scan pulse animations
-    val infiniteTransition = rememberInfiniteTransition(label = "radar")
-    val pulseScale1 by infiniteTransition.animateFloat(
-        initialValue = 0.5f,
-        targetValue = 1.8f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "scale1"
-    )
-    val pulseAlpha1 by infiniteTransition.animateFloat(
-        initialValue = 0.8f,
-        targetValue = 0.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "alpha1"
-    )
+    // Accelerometer listener lifecycle
+    DisposableEffect(currentState) {
+        if (currentState == SyncState.DIAGNOSTICS || currentState == SyncState.SUCCESS) {
+            val listener = object : SensorEventListener {
+                override fun onSensorChanged(event: SensorEvent?) {
+                    if (event != null && event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
+                        sensorValues = event.values.clone()
+                    }
+                }
+                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+            }
+            sensorManager.registerListener(listener, accelerometer, SensorManager.SENSOR_DELAY_UI)
+            onDispose {
+                sensorManager.unregisterListener(listener)
+            }
+        } else {
+            onDispose {}
+        }
+    }
+
+    // Biometrics and gyro fluctuations
+    LaunchedEffect(currentState) {
+        if (currentState == SyncState.DIAGNOSTICS || currentState == SyncState.SUCCESS) {
+            while (true) {
+                delay(1000)
+                liveHeartRate = (72..84).random()
+                liveSpO2 = (97..99).random()
+                liveTemp = 36.4f + (0..3).random() / 10.0f
+                gyroValues = floatArrayOf(
+                    (-5..5).random() / 10f,
+                    (-5..5).random() / 10f,
+                    (-5..5).random() / 10f
+                )
+            }
+        }
+    }
 
     // Trigger state machines
     LaunchedEffect(currentState) {
@@ -116,6 +151,33 @@ fun WearableSyncScreen(
             currentState = SyncState.SUCCESS
         }
     }
+
+    // Calculate dynamic G-Force based on physical accelerometer readings
+    val ax = sensorValues[0] / 9.81f
+    val ay = sensorValues[1] / 9.81f
+    val az = sensorValues[2] / 9.81f
+    val gForce = sqrt(ax * ax + ay * ay + az * az)
+
+    // Radar scan pulse animations
+    val infiniteTransition = rememberInfiniteTransition(label = "radar")
+    val pulseScale1 by infiniteTransition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1.8f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "scale1"
+    )
+    val pulseAlpha1 by infiniteTransition.animateFloat(
+        initialValue = 0.8f,
+        targetValue = 0.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "alpha1"
+    )
 
     Box(
         modifier = Modifier
@@ -355,7 +417,7 @@ fun WearableSyncScreen(
                         modifier = Modifier.align(Alignment.Start)
                     )
                     Text(
-                        text = "Probando la captura de datos fisiológicos y mecánicos del reloj...",
+                        text = "Probando la captura de datos fisiológicos y mecánicos en tiempo real. Agita tu teléfono para probar el acelerómetro.",
                         color = GrayMuted,
                         fontSize = 13.sp,
                         modifier = Modifier.align(Alignment.Start).padding(top = 4.dp, bottom = 20.dp)
@@ -365,7 +427,15 @@ fun WearableSyncScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        diagnostics.forEach { diag ->
+                        diagnostics.forEachIndexed { index, diag ->
+                            val detailText = when (index) {
+                                0 -> String.format("Ejes: Ax=%.2fG, Ay=%.2fG, Az=%.2fG (Total: %.2fG)", ax, ay, az, gForce)
+                                1 -> String.format("Rotación: Pitch=%.1f°/s, Roll=%.1f°/s, Yaw=%.1f°/s", gyroValues[0], gyroValues[1], gyroValues[2])
+                                2 -> "Ritmo: $liveHeartRate bpm | Oxígeno: $liveSpO2% SpO2"
+                                3 -> "Coordenadas: Lat 20.0841, Lon -99.3442"
+                                else -> String.format("Temperatura corporal: %.1f °C", liveTemp)
+                            }
+
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
@@ -384,7 +454,7 @@ fun WearableSyncScreen(
                                             fontSize = 14.sp
                                         )
                                         Text(
-                                            text = diag.paramDetail,
+                                            text = detailText,
                                             fontSize = 12.sp,
                                             color = if (diag.status == "success") TealPrimary else GrayMuted,
                                             modifier = Modifier.padding(top = 2.dp),
@@ -443,7 +513,7 @@ fun WearableSyncScreen(
                     )
                     
                     Text(
-                        text = "${selectedDevice?.name} está enlazado correctamente como monitor activo en segundo plano.\n\nLos parámetros de Fuerza G y Signos Vitales se enviarán a tu red de emergencia en caso de siniestro.",
+                        text = "${selectedDevice?.name} está enlazado correctamente como monitor activo.\n\nFuerza G actual: ${String.format("%.2fG", gForce)}\nSignos Vitales: $liveHeartRate bpm, SpO2: $liveSpO2%\nTemperatura: ${String.format("%.1f°C", liveTemp)}\n\nLos parámetros se enviarán a tu red de emergencia en caso de colisión.",
                         color = GrayMuted,
                         fontSize = 14.sp,
                         textAlign = TextAlign.Center,
