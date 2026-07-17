@@ -17,6 +17,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
@@ -73,6 +74,7 @@ data class BLEDeviceItem(
     val device: BluetoothDevice? = null
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WearableSyncScreen(
     onNavigateBack: () -> Unit
@@ -88,6 +90,9 @@ fun WearableSyncScreen(
     val scannedDevices = remember { mutableStateListOf<BLEDeviceItem>() }
     var selectedDevice by remember { mutableStateOf<BLEDeviceItem?>(null) }
     var connectionProgress by remember { mutableStateOf(0f) }
+
+    // Manual MAC address connection state
+    var manualMacInput by remember { mutableStateOf("") }
 
     // Live telemetry values from watch (or simulated fallback)
     var realHeartRate by remember { mutableStateOf(72) }
@@ -196,55 +201,6 @@ fun WearableSyncScreen(
         }
     }
 
-    // Real BLE Scan Logic
-    LaunchedEffect(bleState) {
-        if (bleState == BLEState.SCANNING && bluetoothAdapter != null && bluetoothAdapter.isEnabled) {
-            scannedDevices.clear()
-            
-            // Add custom simulated fallback watch so they can test even if Bluetooth has no hardware near
-            scannedDevices.add(
-                BLEDeviceItem(
-                    name = "Samsung Galaxy Watch 6 (Simulado)",
-                    address = "AA:BB:CC:DD:EE:FF",
-                    rssi = -60
-                )
-            )
-
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                val scanner = bluetoothAdapter.bluetoothLeScanner
-                if (scanner != null) {
-                    val scanCallback = object : ScanCallback() {
-                        override fun onScanResult(callbackType: Int, result: ScanResult?) {
-                            if (result != null && result.device != null) {
-                                val name = result.device.name ?: "Dispositivo desconocido"
-                                val address = result.device.address
-                                val rssi = result.rssi
-                                
-                                // Avoid duplicates
-                                if (scannedDevices.none { it.address == address }) {
-                                    scannedDevices.add(BLEDeviceItem(name, address, rssi, result.device))
-                                }
-                            }
-                        }
-                    }
-
-                    // Scan for 10 seconds, then transition to list automatically if scanned something
-                    scanner.startScan(scanCallback)
-                    delay(5000)
-                    scanner.stopScan(scanCallback)
-                    
-                    if (bleState == BLEState.SCANNING) {
-                        bleState = BLEState.DEVICE_LIST
-                    }
-                } else {
-                    bleState = BLEState.DEVICE_LIST
-                }
-            } else {
-                bleState = BLEState.DEVICE_LIST
-            }
-        }
-    }
-
     // GATT Connection Callback
     val gattCallback = remember {
         object : BluetoothGattCallback() {
@@ -317,7 +273,7 @@ fun WearableSyncScreen(
         }
     }
 
-    // Connect function
+    // Connect helper
     fun connectToDevice(deviceItem: BLEDeviceItem) {
         bleState = BLEState.CONNECTING
         isRealConnection = deviceItem.device != null
@@ -343,6 +299,89 @@ fun WearableSyncScreen(
                 realHeartRate = (70..80).random()
                 realBatteryLevel = (85..99).random()
                 bleState = BLEState.CONNECTED_DASHBOARD
+            }
+        }
+    }
+
+    // Connect manually by MAC Address
+    fun connectByMac(mac: String) {
+        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
+            Toast.makeText(context, "Activa el Bluetooth primero", Toast.LENGTH_LONG).show()
+            return
+        }
+        try {
+            val cleanMac = mac.trim().uppercase()
+            if (cleanMac.length != 17 || !cleanMac.contains(":")) {
+                Toast.makeText(context, "El formato de MAC debe ser AA:BB:CC:11:22:33", Toast.LENGTH_LONG).show()
+                return
+            }
+            val device = bluetoothAdapter.getRemoteDevice(cleanMac)
+            connectToDevice(BLEDeviceItem(device.name ?: "Reloj por MAC", cleanMac, -50, device))
+        } catch (e: Exception) {
+            Toast.makeText(context, "Error al conectar MAC: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // Real BLE Scan Logic + Bonded Devices Extraction
+    LaunchedEffect(bleState) {
+        if (bleState == BLEState.SCANNING && bluetoothAdapter != null && bluetoothAdapter.isEnabled) {
+            scannedDevices.clear()
+            
+            // Add custom simulated fallback watch so they can test even if Bluetooth has no hardware near
+            scannedDevices.add(
+                BLEDeviceItem(
+                    name = "Samsung Galaxy Watch 6 (Simulado)",
+                    address = "AA:BB:CC:DD:EE:FF",
+                    rssi = -60
+                )
+            )
+
+            // EXTRACT BONDED (PAIRED) DEVICES INSTANTLY
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                val bonded = bluetoothAdapter.bondedDevices
+                if (!bonded.isNullOrEmpty()) {
+                    for (device in bonded) {
+                        val name = device.name ?: "Reloj Vinculado"
+                        val address = device.address
+                        if (scannedDevices.none { it.address == address }) {
+                            scannedDevices.add(BLEDeviceItem(name, address, -55, device))
+                        }
+                    }
+                }
+            }
+
+            // START ACTIVE BLE DISCOVERY SCAN
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                val scanner = bluetoothAdapter.bluetoothLeScanner
+                if (scanner != null) {
+                    val scanCallback = object : ScanCallback() {
+                        override fun onScanResult(callbackType: Int, result: ScanResult?) {
+                            if (result != null && result.device != null) {
+                                val name = result.device.name ?: "Dispositivo desconocido"
+                                val address = result.device.address
+                                val rssi = result.rssi
+                                
+                                // Avoid duplicates
+                                if (scannedDevices.none { it.address == address }) {
+                                    scannedDevices.add(BLEDeviceItem(name, address, rssi, result.device))
+                                }
+                            }
+                        }
+                    }
+
+                    scanner.startScan(scanCallback)
+                    delay(8000) // Scan for 8 seconds
+                    scanner.stopScan(scanCallback)
+                    
+                    if (bleState == BLEState.SCANNING) {
+                        bleState = BLEState.DEVICE_LIST
+                    }
+                } else {
+                    bleState = BLEState.DEVICE_LIST
+                }
+            } else {
+                bleState = BLEState.DEVICE_LIST
             }
         }
     }
@@ -520,25 +559,25 @@ fun WearableSyncScreen(
 
                 BLEState.SCANNING -> {
                     Text(
-                        text = "Escaneando Relojes Inteligentes...",
+                        text = "Buscando Relojes...",
                         color = Color.White,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center
                     )
                     Text(
-                        text = "Buscando señales BLE activas (Wear OS).",
+                        text = "Buscando señales BLE activas y dispositivos vinculados.",
                         color = GrayMuted,
                         fontSize = 13.sp,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(top = 4.dp)
                     )
 
-                    Spacer(modifier = Modifier.height(50.dp))
+                    Spacer(modifier = Modifier.height(30.dp))
 
                     // Radar Scanning UI
                     Box(
-                        modifier = Modifier.size(200.dp),
+                        modifier = Modifier.size(180.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -557,12 +596,6 @@ fun WearableSyncScreen(
                                 center = centerOffset,
                                 style = Stroke(width = 1.dp.toPx())
                             )
-                            drawCircle(
-                                color = TealPrimary.copy(alpha = 0.2f),
-                                radius = size.width / 3,
-                                center = centerOffset,
-                                style = Stroke(width = 1.dp.toPx())
-                            )
                         }
 
                         Box(
@@ -576,20 +609,46 @@ fun WearableSyncScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(50.dp))
+                    Spacer(modifier = Modifier.height(30.dp))
+                    
+                    // Android location warning note
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1400)),
+                        border = BorderStroke(1.dp, Color(0xFFEAB308).copy(alpha = 0.3f))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text(
+                                text = "⚠️ IMPORTANTE: Ubicación (GPS)",
+                                color = Color(0xFFEAB308),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Android requiere que la UBICACIÓN (GPS) de tu teléfono celular esté activada en los ajustes rápidos. Si el GPS está apagado, el scanner no mostrará ningún dispositivo Bluetooth cercano.",
+                                color = Color.White.copy(alpha = 0.8f),
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
                     CircularProgressIndicator(color = TealPrimary, modifier = Modifier.size(24.dp))
                 }
 
                 BLEState.DEVICE_LIST -> {
                     Text(
-                        text = "Relojes Encontrados",
+                        text = "Relojes Encontrados / Vinculados",
                         color = Color.White,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.align(Alignment.Start)
                     )
                     Text(
-                        text = "Selecciona tu Galaxy Watch para sincronizar la telemetría cardíaca.",
+                        text = "Selecciona tu Galaxy Watch o conéctalo de forma directa si está emparejado.",
                         color = GrayMuted,
                         fontSize = 13.sp,
                         modifier = Modifier
@@ -637,7 +696,7 @@ fun WearableSyncScreen(
                                                         .padding(horizontal = 6.dp, vertical = 2.dp)
                                                 ) {
                                                     Text(
-                                                        text = "FÍSICO",
+                                                        text = "VINCULADO",
                                                         fontSize = 9.sp,
                                                         color = TealPrimary,
                                                         fontWeight = FontWeight.Bold
@@ -665,6 +724,58 @@ fun WearableSyncScreen(
 
                     Spacer(modifier = Modifier.height(24.dp))
 
+                    // Manual MAC Input Card (Backup Connection)
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "🔗 Conexión Manual Directa (MAC Address)",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Si el scanner no detecta el reloj, ingresa la dirección MAC de Bluetooth de tu Samsung Galaxy Watch 6 para forzar enlace directo:",
+                                color = GrayMuted,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(vertical = 6.dp)
+                            )
+                            
+                            OutlinedTextField(
+                                value = manualMacInput,
+                                onValueChange = { manualMacInput = it },
+                                placeholder = { Text("ej. AA:BB:CC:11:22:33", color = GrayMuted, fontSize = 13.sp) },
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = TealPrimary,
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.15f),
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White
+                                ),
+                                singleLine = true
+                            )
+                            
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            Button(
+                                onClick = { connectByMac(manualMacInput) },
+                                modifier = Modifier.fillMaxWidth().height(46.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = TealPrimary),
+                                enabled = manualMacInput.isNotBlank()
+                            ) {
+                                Text("Forzar Conexión Directa", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
                     OutlinedButton(
                         onClick = { bleState = BLEState.SCANNING },
                         modifier = Modifier
@@ -674,7 +785,7 @@ fun WearableSyncScreen(
                         border = BorderStroke(1.dp, TealPrimary),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = TealPrimary)
                     ) {
-                        Text("Escanear Nuevamente", fontWeight = FontWeight.Bold)
+                        Text("Volver a Buscar", fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -714,7 +825,6 @@ fun WearableSyncScreen(
                 }
 
                 BLEState.CONNECTED_DASHBOARD -> {
-                    // STUNNING futuristic HUD Cockpit view
                     Spacer(modifier = Modifier.height(8.dp))
 
                     // Pulse Card
