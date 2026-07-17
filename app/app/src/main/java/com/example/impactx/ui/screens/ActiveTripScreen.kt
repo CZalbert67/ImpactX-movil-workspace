@@ -1,5 +1,10 @@
 package com.example.impactx.ui.screens
 
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -19,11 +24,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlin.math.sqrt
 
 @Composable
 fun ActiveTripScreen(
@@ -33,17 +40,71 @@ fun ActiveTripScreen(
     onNavigateToPlans: () -> Unit
 ) {
     var speed by remember { mutableStateOf(65) }
-    var gForce by remember { mutableStateOf(1.03f) }
     var timerSeconds by remember { mutableStateOf(0) }
-    var showSosConfirmation by remember { mutableStateOf(false) }
+    var showManualSosConfirmation by remember { mutableStateOf(false) }
 
-    // Driving simulator loop
+    // Crash detection simulation state
+    var showCrashDialog by remember { mutableStateOf(false) }
+    var crashCountdown by remember { mutableStateOf(5) }
+    var crashForceValue by remember { mutableStateOf(0.0f) }
+
+    val context = LocalContext.current
+
+    // Sensor setup for phone's hardware accelerometer
+    val sensorManager = remember { context.getSystemService(Context.SENSOR_SERVICE) as SensorManager }
+    val accelerometer = remember { sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) }
+    var sensorValues by remember { mutableStateOf(floatArrayOf(0f, 0f, 9.81f)) }
+
+    DisposableEffect(Unit) {
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent?) {
+                if (event != null && event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
+                    sensorValues = event.values.clone()
+                }
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+        sensorManager.registerListener(listener, accelerometer, SensorManager.SENSOR_DELAY_UI)
+        onDispose {
+            sensorManager.unregisterListener(listener)
+        }
+    }
+
+    // Calculate real-time G-Force based on physical accelerometer readings
+    val ax = sensorValues[0] / 9.81f
+    val ay = sensorValues[1] / 9.81f
+    val az = sensorValues[2] / 9.81f
+    val liveGForce = sqrt(ax * ax + ay * ay + az * az)
+
+    // Crash Detection Monitor
+    LaunchedEffect(liveGForce) {
+        // A force above 3.5G indicates a major impact (simulated by shaking the phone)
+        if (liveGForce > 3.2f && !showCrashDialog && currentPlan != "Básico") {
+            crashForceValue = liveGForce
+            showCrashDialog = true
+            crashCountdown = 5
+        }
+    }
+
+    // Crash countdown countdown timer loop
+    LaunchedEffect(showCrashDialog) {
+        if (showCrashDialog) {
+            while (crashCountdown > 0) {
+                delay(1000)
+                crashCountdown--
+            }
+            // Trigger SOS when countdown reaches 0
+            showCrashDialog = false
+            onTriggerSos()
+        }
+    }
+
+    // Driving simulator loop (only for speed and timer)
     LaunchedEffect(Unit) {
         while (true) {
             delay(1000)
             timerSeconds++
             speed = (speed + (-3..3).random()).coerceIn(45, 85)
-            gForce = 1.0f + (0..15).random() / 100.0f
         }
     }
 
@@ -219,7 +280,6 @@ fun ActiveTripScreen(
                         )
 
                         // Moving Car (Simulated dot)
-                        // Simple Bezier math interpolation for rendering
                         val t = carProgress
                         val x = (1-t)*(1-t)*(1-t) * (width * 0.1f) + 
                                 3*(1-t)*(1-t)*t * (width * 0.3f) + 
@@ -303,18 +363,18 @@ fun ActiveTripScreen(
                             .size(90.dp)
                             .clip(CircleShape)
                             .background(Color(0xFF102238))
-                            .border(2.dp, Color(0xFF22C55E), CircleShape),
+                            .border(2.dp, if (liveGForce > 3.0f) Color(0xFFEF4444) else Color(0xFF22C55E), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = String.format("%.2f G", gForce),
+                            text = String.format("%.2f G", liveGForce),
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                     }
                     Spacer(modifier = Modifier.height(6.dp))
-                    Text("Fuerza G", fontSize = 12.sp, color = GrayMuted)
+                    Text("Fuerza G Física", fontSize = 12.sp, color = GrayMuted)
                 }
             }
 
@@ -348,13 +408,13 @@ fun ActiveTripScreen(
                     }
                 }
             } else {
-                if (!showSosConfirmation) {
+                if (!showManualSosConfirmation) {
                     Box(
                         modifier = Modifier
                             .size(110.dp)
                             .clip(CircleShape)
                             .background(Color(0xFFEF4444).copy(alpha = 0.15f))
-                            .clickable { showSosConfirmation = true }
+                            .clickable { showManualSosConfirmation = true }
                             .border(1.dp, Color(0xFFEF4444), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
@@ -409,7 +469,7 @@ fun ActiveTripScreen(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 OutlinedButton(
-                                    onClick = { showSosConfirmation = false },
+                                    onClick = { showManualSosConfirmation = false },
                                     modifier = Modifier.weight(1f),
                                     border = BorderStroke(1.dp, Color.White),
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
@@ -418,7 +478,7 @@ fun ActiveTripScreen(
                                 }
                                 Button(
                                     onClick = {
-                                        showSosConfirmation = false
+                                        showManualSosConfirmation = false
                                         onTriggerSos()
                                     },
                                     modifier = Modifier.weight(1f),
@@ -448,6 +508,40 @@ fun ActiveTripScreen(
             ) {
                 Text("Finalizar Viaje", fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
+        }
+
+        // Automatic Collision/Impact Dialog Overlay
+        if (showCrashDialog) {
+            AlertDialog(
+                onDismissRequest = { showCrashDialog = false },
+                title = {
+                    Text(
+                        text = "⚠️ ¡IMPACTO DETECTADO!",
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFEF4444)
+                    )
+                },
+                text = {
+                    Text(
+                        text = String.format(
+                            "Se ha registrado una aceleración violenta de %.2f G.\n\nSe emitirá una alerta SOS automática a tus monitores en %d segundos...",
+                            crashForceValue,
+                            crashCountdown
+                        ),
+                        color = Color.White
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { showCrashDialog = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E))
+                    ) {
+                        Text("ESTOY BIEN (Cancelar SOS)", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                },
+                containerColor = Color(0xFF2C1414),
+                shape = RoundedCornerShape(16.dp)
+            )
         }
     }
 }
