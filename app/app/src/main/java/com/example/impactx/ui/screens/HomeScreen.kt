@@ -292,7 +292,8 @@ fun HomeScreen(
                 fontSize = 11.sp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 6.dp, horizontal = 20.dp),
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 6.dp),
                 textAlign = TextAlign.Center,
                 lineHeight = 15.sp
             )
