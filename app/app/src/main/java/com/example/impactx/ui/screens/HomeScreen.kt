@@ -1,6 +1,7 @@
 package com.example.impactx.ui.screens
 
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,6 +25,9 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun HomeScreen(
     currentPlan: String,
+    userName: String,
+    userId: String,
+    onUserNameChange: (String) -> Unit,
     onNavigateToMedical: () -> Unit,
     onNavigateToVehicle: () -> Unit,
     onNavigateToContacts: () -> Unit,
@@ -52,6 +56,20 @@ fun HomeScreen(
         label = "size"
     )
 
+    // User name edit dialog states
+    var showEditNameDialog by remember { mutableStateOf(false) }
+    var newNameInput by remember { mutableStateOf(userName) }
+
+    // Initials helper
+    val initials = remember(userName) {
+        userName.split(" ")
+            .filter { it.isNotBlank() }
+            .take(2)
+            .map { it.take(1).uppercase() }
+            .joinToString("")
+            .ifEmpty { "U" }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -77,7 +95,7 @@ fun HomeScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Profile initials avatar
+                    // Profile initials avatar (Click logs out)
                     Box(
                         modifier = Modifier
                             .size(48.dp)
@@ -87,7 +105,7 @@ fun HomeScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "AC",
+                            text = initials,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -95,12 +113,36 @@ fun HomeScreen(
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable {
+                                newNameInput = userName
+                                showEditNameDialog = true
+                            }
+                        ) {
+                            Text(
+                                text = "Hola, $userName",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "✏️",
+                                fontSize = 12.sp,
+                                color = TealPrimary
+                            )
+                        }
+                        
+                        // Static User ID Display
                         Text(
-                            text = "Hola, Alberto Zepeda",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            text = "ID: $userId",
+                            fontSize = 11.sp,
+                            color = GrayMuted,
+                            fontWeight = FontWeight.Normal,
+                            modifier = Modifier.padding(vertical = 1.dp)
                         )
+
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.clickable { onNavigateToPlans() }
@@ -149,181 +191,120 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Text(
-                                text = "Burbuja de Seguridad",
-                                fontSize = 13.sp,
-                                color = GrayMuted
-                            )
-                            Text(
-                                text = if (currentPlan == "Básico") "Funciones Limitadas" else "Wear OS: Conectado",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
+                        Text(
+                            text = "SMARTWATCH",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TealPrimary,
+                            letterSpacing = 1.sp
+                        )
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(
-                                    when (currentPlan) {
-                                        "Básico" -> Color(0xFFF59E0B).copy(alpha = 0.15f)
-                                        else -> Color(0xFF22C55E).copy(alpha = 0.15f)
-                                    }
-                                )
-                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(TealPrimary.copy(alpha = 0.15f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = if (currentPlan == "Básico") "Básico" else "Autodiagnóstico Ok",
-                                fontSize = 11.sp,
-                                color = when (currentPlan) {
-                                    "Básico" -> Color(0xFFF59E0B)
-                                    else -> Color(0xFF22C55E)
-                                },
+                                text = "GALAXY WATCH 6",
+                                fontSize = 9.sp,
+                                color = TealPrimary,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                     }
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Divider(color = Color.White.copy(alpha = 0.05f))
-                    Spacer(modifier = Modifier.height(6.dp))
-                    
+                    Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = "⌚ Pulsa para sincronizar o probar sensores del reloj",
+                        text = "Vincular Reloj / Sensores BLE",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "Configura y diagnostica la telemetría física cardíaca y G-Force en tiempo real.",
                         fontSize = 12.sp,
-                        color = TealPrimary,
-                        fontWeight = FontWeight.SemiBold
+                        color = GrayMuted,
+                        modifier = Modifier.padding(top = 4.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.weight(0.15f))
+            Spacer(modifier = Modifier.height(28.dp))
 
-            // Central Passive Shield/Status Representation (Replaces Start Trip Button)
+            // Central Shield Status View
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .wrapContentHeight(),
+                    .height(240.dp),
                 contentAlignment = Alignment.Center
             ) {
-                // Animated pulse glow rings
+                // Outer Pulse Ring
                 Box(
                     modifier = Modifier
                         .size(pulseSize.dp)
                         .clip(CircleShape)
-                        .background(TealPrimary.copy(alpha = pulseAlpha * 0.15f))
+                        .background(TealPrimary.copy(alpha = pulseAlpha))
                 )
+
+                // Main Core Shield Circle
                 Box(
                     modifier = Modifier
-                        .size((pulseSize - 20.dp.value).dp)
-                        .clip(CircleShape)
-                        .background(TealPrimary.copy(alpha = pulseAlpha * 0.3f))
-                )
-                
-                // Solid center shield representation
-                Box(
-                    modifier = Modifier
-                        .size(100.dp)
+                        .size(120.dp)
                         .clip(CircleShape)
                         .background(
                             Brush.radialGradient(
-                                colors = listOf(TealPrimary, Color(0xFF006666))
+                                colors = listOf(TealPrimary, Color(0xFF004D4D))
                             )
                         )
                         .border(2.dp, Color.White.copy(alpha = 0.3f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "🛡️",
-                        fontSize = 44.sp,
-                        textAlign = TextAlign.Center
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "🛡️",
+                            fontSize = 42.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "PROTEGIDO",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            letterSpacing = 1.sp
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Trip instruction status text
+            // Sub-status text
             Text(
-                text = "Monitoreo en Segundo Plano Activo",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
+                text = "Monitoreo de colisión en segundo plano activo.",
                 color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center
             )
             Text(
-                text = "El viaje se iniciará de forma automática en cuanto comiences la actividad desde tu Smartwatch.",
-                fontSize = 13.sp,
+                text = "El viaje se iniciará de forma automática al comenzar la actividad desde tu Smartwatch.",
                 color = GrayMuted,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp),
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.weight(0.2f))
-
-            // Live Telemetry Mini-KPI Panel
-            Row(
+                fontSize = 11.sp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF102238))
-                        .padding(14.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = if (currentPlan == "Básico") "N/A" else "75 bpm",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                        Text("Ritmo Cardíaco", fontSize = 11.sp, color = GrayMuted)
-                    }
-                }
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF102238))
-                        .padding(14.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = if (currentPlan == "Básico") "N/A" else "98% SpO2",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                        Text("Oxígeno", fontSize = 11.sp, color = GrayMuted)
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Quick Access Navigation Options
-            Text(
-                text = "CONFIGURACIÓN DE SEGURIDAD",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = GrayMuted,
-                letterSpacing = 1.sp
+                    .padding(top = 6.dp, horizontal = 20.dp),
+                textAlign = TextAlign.Center,
+                lineHeight = 15.sp
             )
-            Spacer(modifier = Modifier.height(6.dp))
 
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Navigation Options List
             Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Medical Card Link
+                // Medical Profile Card
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -335,17 +316,17 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("🏥", fontSize = 20.sp)
+                        Text("❤️", fontSize = 20.sp)
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
-                            Text("Ficha Médica", fontWeight = FontWeight.Bold, color = Color.White)
-                            Text("Grupo sanguíneo y condiciones", fontSize = 12.sp, color = GrayMuted)
+                            Text("Ficha Médica de Emergencia", fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("Tipo de sangre, alergias y notas", fontSize = 12.sp, color = GrayMuted)
                         }
                     }
                     Text("›", fontSize = 24.sp, color = GrayMuted)
                 }
 
-                // Vehicle Profile Card Link
+                // Vehicle Profile Card
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -360,14 +341,14 @@ fun HomeScreen(
                         Text("🚗", fontSize = 20.sp)
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
-                            Text("Mi Vehículo", fontWeight = FontWeight.Bold, color = Color.White)
-                            Text("Detalles y velocidad promedio", fontSize = 12.sp, color = GrayMuted)
+                            Text("Mi Vehículo Registrado", fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("Modelo, placas y velocidad habitual", fontSize = 12.sp, color = GrayMuted)
                         }
                     }
                     Text("›", fontSize = 24.sp, color = GrayMuted)
                 }
 
-                // Contacts / Monitors Card Link
+                // Contacts and Monitors Card
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -390,5 +371,68 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    // Edit Name Dialog overlay
+    if (showEditNameDialog) {
+        AlertDialog(
+            onDismissRequest = { showEditNameDialog = false },
+            title = {
+                Text(
+                    text = "Editar Nombre",
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "ID de Usuario (Inmutable): $userId",
+                        fontSize = 12.sp,
+                        color = GrayMuted,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                    OutlinedTextField(
+                        value = newNameInput,
+                        onValueChange = { newNameInput = it },
+                        label = { Text("Nombre Completo") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = TealPrimary,
+                            unfocusedBorderColor = GrayMuted,
+                            focusedLabelColor = TealPrimary,
+                            unfocusedLabelColor = GrayMuted,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newNameInput.isNotBlank()) {
+                            onUserNameChange(newNameInput.trim())
+                            showEditNameDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
+                ) {
+                    Text("Guardar", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showEditNameDialog = false },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
+                ) {
+                    Text("Cancelar")
+                }
+            },
+            containerColor = Color(0xFF102238),
+            shape = RoundedCornerShape(16.dp)
+        )
     }
 }

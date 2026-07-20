@@ -13,6 +13,8 @@ import com.example.impactx.ui.screens.*
 @Composable
 fun MainNavigation() {
   var activePlan by remember { mutableStateOf("Básico") }
+  var userName by remember { mutableStateOf("Alberto Zepeda") }
+  val userId by remember { mutableStateOf("IX-9831-AZ") }
   val backStack = rememberNavBackStack(Splash)
 
   NavDisplay(
@@ -44,13 +46,19 @@ fun MainNavigation() {
         entry<Register> {
           RegisterScreen(
             onNavigateBack = { backStack.removeLastOrNull() },
-            onRegisterSuccess = { backStack.add(Home) },
+            onRegisterSuccess = { registeredName ->
+              userName = registeredName
+              backStack.add(Home)
+            },
             onNavigateToLogin = { backStack.add(Login) }
           )
         }
         entry<Home> {
           HomeScreen(
             currentPlan = activePlan,
+            userName = userName,
+            userId = userId,
+            onUserNameChange = { userName = it },
             onNavigateToMedical = { backStack.add(Medical) },
             onNavigateToVehicle = { backStack.add(Vehicle) },
             onNavigateToContacts = { backStack.add(Contacts) },
