@@ -1,37 +1,124 @@
-name: Android CI & Security Pipeline
+name: Android CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ leo-desarrollo, main ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ leo-desarrollo, main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: app
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v7
+
+    - name: Make Gradle wrapper executable
+      run: chmod +x ./gradlew
 
     - name: Setup JDK 17
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: 'gradle'
 
-    - name: Change wrapper permissions
-      run: chmod +x app/gradlew
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v6
+      with:
+        cache-provider: basic
+        validate-wrappers: true
 
-    # DevSecOps: Linter y escaneo de vulnerabilidades en código
     - name: Run Android Lint
-      run: cd app && ./gradlew lintDebug --continue || true
+      run: ./gradlew --no-daemon --stacktrace :app:lintDebug
 
-    # Ejecutar pruebas unitarias locales
     - name: Run Unit Tests
-      run: cd app && ./gradlew testDebugUnitTest --continue || true
+      run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest
 
-    # Compilar APK de pruebas para validar build
     - name: Build Debug APK
-      run: cd app && ./gradlew assembleDebug
+      run: ./gradlew --no-daemon --stacktrace :app:assembleDebug
+
+    - name: Upload Lint Report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: lint-report
+        path: |
+          app/app/build/reports/lint-results-debug.html
+          app/app/build/reports/lint-results-debug.xml
+        if-no-files-found: warn
+        retention-days: 7
+
+    - name: Upload Unit Test Results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: unit-test-results
+        path: |
+          app/app/build/test-results/testDebugUnitTest/**
+          app/app/build/reports/tests/testDebugUnitTest/**
+        if-no-files-found: warn
+        retention-days: 7
+
+    - name: Upload Debug APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: debug-apk
+        path: app/app/build/outputs/apk/debug/*.apk
+        if-no-files-found: error
+        retention-days: 7
+
+  instrumented-tests:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Make Gradle wrapper executable
+      run: chmod +x ./gradlew
+
+    - name: Setup JDK 17
+      uses: actions/setup-java@v5
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v6
+      with:
+        cache-provider: basic
+        validate-wrappers: true
+
+    - name: Run Instrumented Tests (Gradle Managed Device)
+      run: >
+        ./gradlew
+        --no-daemon
+        --stacktrace
+        -Pandroid.testoptions.manageddevices.emulator.gpu=swiftshader_indirect
+        :app:pixel2api35DebugAndroidTest
+
+    - name: Upload Instrumented Test Results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: instrumented-test-results
+        path: |
+          app/app/build/outputs/androidTest-results/managedDevice/**
+          app/app/build/reports/androidTests/managedDevice/**
+          app/app/build/outputs/managed_device_android_test_additional_output/**
+        if-no-files-found: warn
+        retention-days: 7

@@ -117,8 +117,7 @@ fun WearableSyncScreen(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             arrayOf(
                 Manifest.permission.BLUETOOTH_SCAN,
-                Manifest.permission.BLUETOOTH_CONNECT,
-                Manifest.permission.ACCESS_FINE_LOCATION
+                Manifest.permission.BLUETOOTH_CONNECT
             )
         } else {
             arrayOf(
@@ -132,6 +131,14 @@ fun WearableSyncScreen(
         return requiredPermissions.all {
             ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
         }
+    }
+
+    fun hasBluetoothConnectPermission(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.BLUETOOTH_CONNECT
+            ) == PackageManager.PERMISSION_GRANTED
     }
 
     // Permission launcher
@@ -206,7 +213,10 @@ fun WearableSyncScreen(
         object : BluetoothGattCallback() {
             override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
-                    gatt?.discoverServices()
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                        gatt?.discoverServices()
+                    }
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     isRealConnection = false
                     activeGatt = null
@@ -214,6 +224,8 @@ fun WearableSyncScreen(
             }
 
             override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) return
                 if (status == BluetoothGatt.GATT_SUCCESS && gatt != null) {
                     // Try subscribing to Heart Rate Service
                     val hrService = gatt.getService(HEART_RATE_SERVICE_UUID)
@@ -309,6 +321,10 @@ fun WearableSyncScreen(
             Toast.makeText(context, "Activa el Bluetooth primero", Toast.LENGTH_LONG).show()
             return
         }
+        if (!hasBluetoothConnectPermission()) {
+            bleState = BLEState.PERMISSION_REQUEST
+            return
+        }
         try {
             val cleanMac = mac.trim().uppercase()
             if (cleanMac.length != 17 || !cleanMac.contains(":")) {
@@ -357,6 +373,8 @@ fun WearableSyncScreen(
                 if (scanner != null) {
                     val scanCallback = object : ScanCallback() {
                         override fun onScanResult(callbackType: Int, result: ScanResult?) {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                                ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) return
                             if (result != null && result.device != null) {
                                 val name = result.device.name ?: "Dispositivo desconocido"
                                 val address = result.device.address
