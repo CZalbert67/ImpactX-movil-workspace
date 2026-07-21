@@ -207,6 +207,9 @@ fun WearableSyncScreen(
 
     // Check permissions on start
     LaunchedEffect(Unit) {
+        if (WearableManager.bleState == BLEState.CONNECTED_DASHBOARD) {
+            return@LaunchedEffect
+        }
         if (hasAllPermissions()) {
             bleState = if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
                 BLEState.BLUETOOTH_OFF
@@ -984,9 +987,24 @@ fun WearableSyncScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
+                                Text("Dispositivo:", fontSize = 12.sp, color = GrayMuted)
+                                Text(
+                                    text = "${WearableManager.connectedDeviceName ?: "Desconocido"} (${WearableManager.connectedDeviceAddress ?: "N/A"})",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
                                 Text("Fuente de datos:", fontSize = 12.sp, color = GrayMuted)
                                 Text(
-                                    text = if (isRealConnection) "🟢 GALAXY WATCH 6 REAL (GATT)" else "🟡 SIMULACIÓN SENSOR WATCH",
+                                    text = if (isRealConnection) "🟢 CONEXIÓN REAL (GATT)" else "🟡 SIMULACIÓN SENSOR WATCH",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (isRealConnection) Color(0xFF22C55E) else Color(0xFFEAB308)
