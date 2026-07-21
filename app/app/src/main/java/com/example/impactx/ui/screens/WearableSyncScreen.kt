@@ -67,6 +67,16 @@ enum class BLEState {
     CONNECTED_DASHBOARD
 }
 
+object WearableManager {
+    var bleState by mutableStateOf(BLEState.PERMISSION_REQUEST)
+    var realHeartRate by mutableStateOf(72)
+    var realBatteryLevel by mutableStateOf(100)
+    var isRealConnection by mutableStateOf(false)
+    var connectedDeviceName by mutableStateOf<String?>(null)
+    var connectedDeviceAddress by mutableStateOf<String?>(null)
+    var activeGatt: BluetoothGatt? = null
+}
+
 data class BLEDeviceItem(
     val name: String,
     val address: String,
@@ -86,7 +96,15 @@ fun WearableSyncScreen(
     val bluetoothManager = remember { context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager }
     val bluetoothAdapter = remember { bluetoothManager.adapter }
 
-    var bleState by remember { mutableStateOf(BLEState.PERMISSION_REQUEST) }
+    var bleState by remember {
+        object : MutableState<BLEState> {
+            override var value: BLEState
+                get() = WearableManager.bleState
+                set(v) { WearableManager.bleState = v }
+            override fun component1() = value
+            override fun component2(): (BLEState) -> Unit = { value = it }
+        }
+    }
     val scannedDevices = remember { mutableStateListOf<BLEDeviceItem>() }
     var selectedDevice by remember { mutableStateOf<BLEDeviceItem?>(null) }
     var connectionProgress by remember { mutableStateOf(0f) }
@@ -95,9 +113,42 @@ fun WearableSyncScreen(
     var manualMacInput by remember { mutableStateOf("") }
 
     // Live telemetry values from watch (or simulated fallback)
-    var realHeartRate by remember { mutableStateOf(72) }
-    var realBatteryLevel by remember { mutableStateOf(100) }
-    var isRealConnection by remember { mutableStateOf(false) }
+    var realHeartRate by remember {
+        object : MutableState<Int> {
+            override var value: Int
+                get() = WearableManager.realHeartRate
+                set(v) { WearableManager.realHeartRate = v }
+            override fun component1() = value
+            override fun component2(): (Int) -> Unit = { value = it }
+        }
+    }
+    var realBatteryLevel by remember {
+        object : MutableState<Int> {
+            override var value: Int
+                get() = WearableManager.realBatteryLevel
+                set(v) { WearableManager.realBatteryLevel = v }
+            override fun component1() = value
+            override fun component2(): (Int) -> Unit = { value = it }
+        }
+    }
+    var isRealConnection by remember {
+        object : MutableState<Boolean> {
+            override var value: Boolean
+                get() = WearableManager.isRealConnection
+                set(v) { WearableManager.isRealConnection = v }
+            override fun component1() = value
+            override fun component2(): (Boolean) -> Unit = { value = it }
+        }
+    }
+    var activeGatt by remember {
+        object : MutableState<BluetoothGatt?> {
+            override var value: BluetoothGatt?
+                get() = WearableManager.activeGatt
+                set(v) { WearableManager.activeGatt = v }
+            override fun component1() = value
+            override fun component2(): (BluetoothGatt?) -> Unit = { value = it }
+        }
+    }
 
     // Physical sensor accelerometer readings (phone fallback / active visual)
     val sensorManager = remember { context.getSystemService(Context.SENSOR_SERVICE) as SensorManager }
@@ -109,8 +160,7 @@ fun WearableSyncScreen(
     var liveTemp by remember { mutableStateOf(36.5f) }
     var gyroValues by remember { mutableStateOf(floatArrayOf(0f, 0f, 0f)) }
 
-    // Bluetooth connection handles
-    var activeGatt by remember { mutableStateOf<BluetoothGatt?>(null) }
+
 
     // Helper: list of required permissions
     val requiredPermissions = remember {
@@ -220,6 +270,8 @@ fun WearableSyncScreen(
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     isRealConnection = false
                     activeGatt = null
+                    WearableManager.connectedDeviceName = null
+                    WearableManager.connectedDeviceAddress = null
                 }
             }
 
@@ -298,7 +350,11 @@ fun WearableSyncScreen(
                     delay(50)
                     connectionProgress += 0.05f
                 }
+                WearableManager.connectedDeviceName = deviceItem.name
+                WearableManager.connectedDeviceAddress = deviceItem.address
                 bleState = BLEState.CONNECTED_DASHBOARD
+                Toast.makeText(context, "¡Reloj vinculado con éxito!", Toast.LENGTH_SHORT).show()
+                onNavigateBack()
             }
         } else {
             // Simulated connection simulation path
@@ -310,7 +366,11 @@ fun WearableSyncScreen(
                 }
                 realHeartRate = (70..80).random()
                 realBatteryLevel = (85..99).random()
+                WearableManager.connectedDeviceName = deviceItem.name
+                WearableManager.connectedDeviceAddress = deviceItem.address
                 bleState = BLEState.CONNECTED_DASHBOARD
+                Toast.makeText(context, "¡Reloj vinculado con éxito (Simulado)!", Toast.LENGTH_SHORT).show()
+                onNavigateBack()
             }
         }
     }

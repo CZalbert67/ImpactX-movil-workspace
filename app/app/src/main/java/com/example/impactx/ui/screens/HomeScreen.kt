@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -173,6 +174,23 @@ fun HomeScreen(
                 }
             }
 
+            val isConnected = WearableManager.bleState == BLEState.CONNECTED_DASHBOARD
+            
+            // Pulse animation for the heart icon on the card
+            val infiniteTransitionCard = rememberInfiniteTransition(label = "heartPulseCard")
+            val heartScaleCard by infiniteTransitionCard.animateFloat(
+                initialValue = 1f,
+                targetValue = 1.25f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(
+                        durationMillis = if (isConnected) (60000 / WearableManager.realHeartRate.coerceAtLeast(30)) else 800,
+                        easing = FastOutSlowInEasing
+                    ),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "scale"
+            )
+
             Spacer(modifier = Modifier.height(20.dp))
 
             // Main Status Banner (Clickable to sync wearable)
@@ -182,8 +200,9 @@ fun HomeScreen(
                     .clickable { onNavigateToWearableSync() },
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF102238)
-                )
+                    containerColor = if (isConnected) Color(0xFF0F3A2E) else Color(0xFF102238)
+                ),
+                border = if (isConnected) BorderStroke(1.dp, Color(0xFF22C55E).copy(alpha = 0.4f)) else null
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -195,36 +214,80 @@ fun HomeScreen(
                             text = "SMARTWATCH",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = TealPrimary,
+                            color = if (isConnected) Color(0xFF22C55E) else TealPrimary,
                             letterSpacing = 1.sp
                         )
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(TealPrimary.copy(alpha = 0.15f))
+                                .background(if (isConnected) Color(0xFF22C55E).copy(alpha = 0.15f) else TealPrimary.copy(alpha = 0.15f))
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = "GALAXY WATCH 6",
+                                text = if (isConnected) "🟢 VINCULADO" else "DESCONECTADO",
                                 fontSize = 9.sp,
-                                color = TealPrimary,
+                                color = if (isConnected) Color(0xFF22C55E) else TealPrimary,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = "Vincular Reloj / Sensores BLE",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        text = "Configura y diagnostica la telemetría física cardíaca y G-Force en tiempo real.",
-                        fontSize = 12.sp,
-                        color = GrayMuted,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    if (isConnected) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Pulsing heart
+                            Box(
+                                modifier = Modifier
+                                    .scale(heartScaleCard)
+                                    .size(32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("❤️", fontSize = 24.sp)
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "${WearableManager.realHeartRate} BPM",
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "Batería del reloj: ${WearableManager.realBatteryLevel}%",
+                                    fontSize = 12.sp,
+                                    color = GrayMuted
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "Dispositivo: ${WearableManager.connectedDeviceName ?: "Galaxy Watch"}",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Presiona para administrar la conexión y ver telemetría completa.",
+                            fontSize = 11.sp,
+                            color = GrayMuted
+                        )
+                    } else {
+                        Text(
+                            text = "Vincular Reloj / Sensores BLE",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Configura y diagnostica la telemetría física cardíaca y G-Force en tiempo real.",
+                            fontSize = 12.sp,
+                            color = GrayMuted,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
             }
 
@@ -271,6 +334,15 @@ fun HomeScreen(
                             color = Color.White,
                             letterSpacing = 1.sp
                         )
+                        if (isConnected) {
+                            Text(
+                                text = "❤️ ${WearableManager.realHeartRate} BPM",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF22C55E),
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
                     }
                 }
             }
