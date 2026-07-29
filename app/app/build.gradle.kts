@@ -2,13 +2,14 @@ plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
+  alias(libs.plugins.google.services)
 }
 
 android {
     namespace = "com.example.impactx"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.example.impactx"
+        applicationId = "com.impactx.app"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
@@ -94,4 +95,8 @@ dependencies {
   implementation(libs.androidx.navigation3.ui)
   implementation(libs.androidx.navigation3.runtime)
   implementation(libs.androidx.lifecycle.viewmodel.navigation3)
+
+  // Firebase Cloud Messaging (FCM)
+  implementation(platform(libs.firebase.bom))
+  implementation(libs.firebase.messaging.ktx)
 }

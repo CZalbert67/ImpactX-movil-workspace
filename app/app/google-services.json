@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "790229502629",
+    "project_id": "impactx-production",
+    "storage_bucket": "impactx-production.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:790229502629:android:733f37a48712f01e0bdb4c",
+        "android_client_info": {
+          "package_name": "com.impactx.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBONumrjw97evfSgqM1X4ftIqgNNuJAUIw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
