@@ -13,7 +13,7 @@ data class RegisterRequest(
     @SerializedName("password") val password: String,
     @SerializedName("nombre") val nombre: String,
     @SerializedName("telefono") val telefono: String,
-    @SerializedName("planActivo") val planActivo: String? = "Trial"
+    @SerializedName("planActivo") val planActivo: String? = "Free"
 )
 
 data class RefreshTokenRequest(
