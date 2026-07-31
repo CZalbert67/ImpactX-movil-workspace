@@ -18,14 +18,25 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
+import androidx.compose.ui.platform.LocalContext
+import com.example.impactx.data.local.AppDatabase
+
 @Composable
 fun SplashScreen(
-    onTimeout: () -> Unit
+    onTimeout: (hasActiveSession: Boolean, username: String, plan: String) -> Unit
 ) {
-    // Navigate after 2.5 seconds
+    val context = LocalContext.current
+
+    // Navigate after 2.5 seconds, checking local Room DB session
     LaunchedEffect(Unit) {
+        val db = AppDatabase.getDatabase(context)
+        val session = db.sessionDao().getSession()
         delay(2500)
-        onTimeout()
+        if (session != null) {
+            onTimeout(true, session.username, session.planActivo ?: "Básico")
+        } else {
+            onTimeout(false, "", "Básico")
+        }
     }
 
     // Radar pulse animation

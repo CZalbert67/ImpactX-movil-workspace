@@ -16,6 +16,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import com.example.impactx.data.local.AppDatabase
+import com.example.impactx.data.local.SessionEntity
+import com.example.impactx.data.remote.ApiClient
+import com.example.impactx.data.remote.LoginRequest
+import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(
@@ -23,9 +29,12 @@ fun LoginScreen(
     onLoginSuccess: () -> Unit,
     onNavigateToRegister: () -> Unit
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -119,8 +128,44 @@ fun LoginScreen(
                 onClick = {
                     if (email.isBlank() || password.isBlank()) {
                         errorMessage = "Por favor completa todos los campos."
+                    } else if (isLoading) {
+                        // Already loading
                     } else {
-                        onLoginSuccess()
+                        isLoading = true
+                        errorMessage = ""
+                        coroutineScope.launch {
+                            try {
+                                val apiService = ApiClient.getApiService(context)
+                                val response = apiService.login(LoginRequest(email.trim(), password.trim()))
+                                if (response.isSuccessful && response.body()?.success == true) {
+                                    val authBody = response.body()!!
+                                    val userDto = authBody.usuario!!
+                                    
+                                    // Save Session in Room
+                                    val db = AppDatabase.getDatabase(context)
+                                    db.sessionDao().saveSession(
+                                        SessionEntity(
+                                            userId = userDto.id,
+                                            username = userDto.username,
+                                            correo = userDto.correo,
+                                            planActivo = userDto.planActivo,
+                                            accessToken = authBody.accessToken!!,
+                                            refreshToken = authBody.refreshToken!!,
+                                            expiresAt = System.currentTimeMillis() + (15 * 60 * 1000) // 15 mins
+                                        )
+                                    )
+                                    
+                                    isLoading = false
+                                    onLoginSuccess()
+                                } else {
+                                    isLoading = false
+                                    errorMessage = response.body()?.message ?: "Error de credenciales."
+                                }
+                            } catch (e: Exception) {
+                                isLoading = false
+                                errorMessage = "Error de red: no se pudo conectar al servidor."
+                            }
+                        }
                     }
                 },
                 modifier = Modifier
@@ -132,7 +177,11 @@ fun LoginScreen(
                     contentColor = Color.White
                 )
             ) {
-                Text("Entrar", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                if (isLoading) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                } else {
+                    Text("Entrar", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
             }
 
             Spacer(modifier = Modifier.weight(1f))

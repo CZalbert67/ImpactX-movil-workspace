@@ -3,6 +3,7 @@ plugins {
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
   alias(libs.plugins.google.services)
+  kotlin("kapt")
 }
 
 android {
@@ -99,4 +100,15 @@ dependencies {
   // Firebase Cloud Messaging (FCM)
   implementation(platform(libs.firebase.bom))
   implementation(libs.firebase.messaging.ktx)
+
+  // Room Database
+  implementation(libs.androidx.room.runtime)
+  kapt(libs.androidx.room.compiler)
+  implementation(libs.androidx.room.ktx)
+
+  // Retrofit & OkHttp
+  implementation(libs.retrofit)
+  implementation(libs.retrofit.converter.gson)
+  implementation(libs.okhttp)
+  implementation(libs.okhttp.logging.interceptor)
 }

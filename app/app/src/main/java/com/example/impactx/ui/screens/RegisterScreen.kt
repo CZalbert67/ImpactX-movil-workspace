@@ -16,6 +16,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import com.example.impactx.data.local.AppDatabase
+import com.example.impactx.data.local.SessionEntity
+import com.example.impactx.data.remote.ApiClient
+import com.example.impactx.data.remote.RegisterRequest
+import kotlinx.coroutines.launch
 
 @Composable
 fun RegisterScreen(
@@ -23,11 +29,14 @@ fun RegisterScreen(
     onRegisterSuccess: (String) -> Unit,
     onNavigateToLogin: () -> Unit
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -157,10 +166,67 @@ fun RegisterScreen(
             // Register Button
             Button(
                 onClick = {
+                    val emailPattern = android.util.Patterns.EMAIL_ADDRESS
+                    val isEmailValid = emailPattern.matcher(email.trim()).matches()
+                    
+                    val isPasswordValid = password.length >= 8 && 
+                            password.any { it.isUpperCase() } && 
+                            password.any { it.isLowerCase() } && 
+                            password.any { it.isDigit() }
+
                     if (name.isBlank() || email.isBlank() || phone.isBlank() || password.isBlank()) {
                         errorMessage = "Por favor completa todos los campos."
+                    } else if (!isEmailValid) {
+                        errorMessage = "El correo electrónico no tiene un formato válido."
+                    } else if (!isPasswordValid) {
+                        errorMessage = "La contraseña debe tener al menos 8 caracteres, incluir una mayúscula, una minúscula y un número."
+                    } else if (isLoading) {
+                        // Already loading
                     } else {
-                        onRegisterSuccess(name)
+                        isLoading = true
+                        errorMessage = ""
+                        coroutineScope.launch {
+                            try {
+                                val apiService = ApiClient.getApiService(context)
+                                val generatedUsername = name.trim().replace(" ", "").lowercase() + (10..99).random().toString()
+                                val response = apiService.register(
+                                    RegisterRequest(
+                                        username = generatedUsername,
+                                        correo = email.trim(),
+                                        password = password,
+                                        nombre = name.trim(),
+                                        telefono = phone.trim()
+                                    )
+                                )
+                                if (response.isSuccessful && response.body()?.success == true) {
+                                    val authBody = response.body()!!
+                                    val userDto = authBody.usuario!!
+                                    
+                                    // Save Session in Room
+                                    val db = AppDatabase.getDatabase(context)
+                                    db.sessionDao().saveSession(
+                                        SessionEntity(
+                                            userId = userDto.id,
+                                            username = userDto.username,
+                                            correo = userDto.correo,
+                                            planActivo = userDto.planActivo,
+                                            accessToken = authBody.accessToken!!,
+                                            refreshToken = authBody.refreshToken!!,
+                                            expiresAt = System.currentTimeMillis() + (15 * 60 * 1000) // 15 mins
+                                        )
+                                    )
+                                    
+                                    isLoading = false
+                                    onRegisterSuccess(name)
+                                } else {
+                                    isLoading = false
+                                    errorMessage = response.body()?.message ?: "Error al registrar la cuenta."
+                                }
+                            } catch (e: Exception) {
+                                isLoading = false
+                                errorMessage = "Error de red: no se pudo conectar al servidor."
+                            }
+                        }
                     }
                 },
                 modifier = Modifier
@@ -172,7 +238,11 @@ fun RegisterScreen(
                     contentColor = Color.White
                 )
             ) {
-                Text("Registrarme", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                if (isLoading) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                } else {
+                    Text("Registrarme", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
             }
 
             Spacer(modifier = Modifier.weight(1f))

@@ -8,10 +8,16 @@ import androidx.compose.runtime.setValue
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.rememberCoroutineScope
+import com.example.impactx.data.local.AppDatabase
+import kotlinx.coroutines.launch
 import com.example.impactx.ui.screens.*
 
 @Composable
 fun MainNavigation() {
+  val context = LocalContext.current
+  val coroutineScope = rememberCoroutineScope()
   var activePlan by remember { mutableStateOf("Básico") }
   var userName by remember { mutableStateOf("Alberto Zepeda") }
   val userId by remember { mutableStateOf("IX-9831-AZ") }
@@ -24,9 +30,15 @@ fun MainNavigation() {
       entryProvider {
         entry<Splash> {
           SplashScreen(
-            onTimeout = {
+            onTimeout = { hasSession, sessionUsername, sessionPlan ->
               backStack.removeLastOrNull() // remove Splash
-              backStack.add(Welcome)      // go to Welcome
+              if (hasSession) {
+                userName = sessionUsername
+                activePlan = sessionPlan
+                backStack.add(Home)
+              } else {
+                backStack.add(Welcome)
+              }
             }
           )
         }
@@ -65,7 +77,21 @@ fun MainNavigation() {
             onNavigateToPlans = { backStack.add(Plans) },
             onNavigateToWearableSync = { backStack.add(WearableSync) },
             onLogout = { 
-              backStack.removeLastOrNull() // go back to welcome
+              coroutineScope.launch {
+                val db = AppDatabase.getDatabase(context)
+                val session = db.sessionDao().getSession()
+                if (session != null) {
+                  try {
+                    val apiService = ApiClient.getApiService(context)
+                    apiService.logout("Bearer ${session.accessToken}")
+                  } catch (e: Exception) {
+                    // Safe ignore network error on logout
+                  }
+                }
+                db.sessionDao().clearSession()
+                backStack.removeLastOrNull()
+                backStack.add(Welcome)
+              }
             }
           )
         }
