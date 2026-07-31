@@ -17,7 +17,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import androidx.compose.ui.platform.LocalContext
 import com.example.impactx.data.local.AppDatabase
 
@@ -30,7 +31,7 @@ fun SplashScreen(
     // Navigate after 2.5 seconds, checking local Room DB session
     LaunchedEffect(Unit) {
         val db = AppDatabase.getDatabase(context)
-        val session = db.sessionDao().getSession()
+        val session = withContext(Dispatchers.IO) { db.sessionDao().session }
         delay(2500)
         if (session != null) {
             onTimeout(true, session.username, session.planActivo ?: "Básico")

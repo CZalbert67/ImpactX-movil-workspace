@@ -22,6 +22,8 @@ import com.example.impactx.data.local.SessionEntity
 import com.example.impactx.data.remote.ApiClient
 import com.example.impactx.data.remote.RegisterRequest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 
 @Composable
 fun RegisterScreen(
@@ -204,17 +206,19 @@ fun RegisterScreen(
                                     
                                     // Save Session in Room
                                     val db = AppDatabase.getDatabase(context)
-                                    db.sessionDao().saveSession(
-                                        SessionEntity(
-                                            userId = userDto.id,
-                                            username = userDto.username,
-                                            correo = userDto.correo,
-                                            planActivo = userDto.planActivo,
-                                            accessToken = authBody.accessToken!!,
-                                            refreshToken = authBody.refreshToken!!,
-                                            expiresAt = System.currentTimeMillis() + (15 * 60 * 1000) // 15 mins
+                                    withContext(Dispatchers.IO) {
+                                        db.sessionDao().saveSession(
+                                            SessionEntity(
+                                                userDto.id,
+                                                userDto.username,
+                                                userDto.correo,
+                                                userDto.planActivo,
+                                                authBody.accessToken!!,
+                                                authBody.refreshToken!!,
+                                                System.currentTimeMillis() + (15 * 60 * 1000) // 15 mins
+                                            )
                                         )
-                                    )
+                                    }
                                     
                                     isLoading = false
                                     onRegisterSuccess(name)

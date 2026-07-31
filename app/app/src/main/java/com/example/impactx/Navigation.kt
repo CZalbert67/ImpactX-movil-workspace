@@ -13,6 +13,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import com.example.impactx.data.local.AppDatabase
 import com.example.impactx.data.remote.ApiClient
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import com.example.impactx.ui.screens.*
 
 @Composable
@@ -80,7 +82,7 @@ fun MainNavigation() {
             onLogout = { 
               coroutineScope.launch {
                 val db = AppDatabase.getDatabase(context)
-                val session = db.sessionDao().getSession()
+                val session = withContext(Dispatchers.IO) { db.sessionDao().session }
                 if (session != null) {
                   try {
                     val apiService = ApiClient.getApiService(context)
@@ -89,7 +91,7 @@ fun MainNavigation() {
                     // Safe ignore network error on logout
                   }
                 }
-                db.sessionDao().clearSession()
+                withContext(Dispatchers.IO) { db.sessionDao().clearSession() }
                 backStack.removeLastOrNull()
                 backStack.add(Welcome)
               }

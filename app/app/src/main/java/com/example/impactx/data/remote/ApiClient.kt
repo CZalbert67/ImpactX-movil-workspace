@@ -34,7 +34,7 @@ object ApiClient {
 
         // 2. Request Interceptor (JWT injection + Correlation Id)
         val requestInterceptor = Interceptor { chain ->
-            val session = runBlocking { sessionDao.getSession() }
+            val session = sessionDao.session
             val originalRequest = chain.request()
             val builder = originalRequest.newBuilder()
                 .header("X-Correlation-Id", UUID.randomUUID().toString())
@@ -48,18 +48,18 @@ object ApiClient {
 
         // 3. OkHttp Authenticator (Auto-refresh on 401)
         val authenticator = Authenticator { _, response ->
-            val session = runBlocking { sessionDao.getSession() }
+            val session = sessionDao.session
             if (session == null) return@Authenticator null
-
+ 
             // Avoid infinite loop if refreshing fails repeatedly
             if (responseCount(response) >= 3) {
-                runBlocking { sessionDao.clearSession() }
+                sessionDao.clearSession()
                 return@Authenticator null
             }
-
+ 
             synchronized(this) {
                 // Check if another request already refreshed it
-                val currentSession = runBlocking { sessionDao.getSession() }
+                val currentSession = sessionDao.session
                 if (currentSession == null) return@Authenticator null
 
                 var newAccessToken = ""
@@ -90,22 +90,20 @@ object ApiClient {
                             newRefreshToken = body.refreshToken!!
 
                             // Save new tokens
-                            runBlocking {
-                                sessionDao.saveSession(
-                                    SessionEntity(
-                                        userId = session.userId,
-                                        username = session.username,
-                                        correo = session.correo,
-                                        planActivo = session.planActivo,
-                                        accessToken = newAccessToken,
-                                        refreshToken = newRefreshToken,
-                                        expiresAt = System.currentTimeMillis() + (15 * 60 * 1000) // 15 mins
-                                    )
+                            sessionDao.saveSession(
+                                SessionEntity(
+                                    session.userId,
+                                    session.username,
+                                    session.correo,
+                                    session.planActivo,
+                                    newAccessToken,
+                                    newRefreshToken,
+                                    System.currentTimeMillis() + (15 * 60 * 1000) // 15 mins
                                 )
-                            }
+                            )
                         } else {
                             // Refresh token failed/expired -> force user to log in again
-                            runBlocking { sessionDao.clearSession() }
+                            sessionDao.clearSession()
                             return@Authenticator null
                         }
                     } catch (e: Exception) {
