@@ -62,8 +62,8 @@ object ApiClient {
                 val currentSession = runBlocking { sessionDao.getSession() }
                 if (currentSession == null) return@Authenticator null
 
-                val newAccessToken: String
-                val newRefreshToken: String
+                var newAccessToken = ""
+                var newRefreshToken = ""
 
                 if (currentSession.accessToken != session.accessToken) {
                     newAccessToken = currentSession.accessToken

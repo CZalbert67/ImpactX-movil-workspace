@@ -3,7 +3,6 @@ plugins {
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
   alias(libs.plugins.google.services)
-  kotlin("kapt")
 }
 
 android {
@@ -103,7 +102,7 @@ dependencies {
 
   // Room Database
   implementation(libs.androidx.room.runtime)
-  kapt(libs.androidx.room.compiler)
+  annotationProcessor(libs.androidx.room.compiler)
   implementation(libs.androidx.room.ktx)
 
   // Retrofit & OkHttp

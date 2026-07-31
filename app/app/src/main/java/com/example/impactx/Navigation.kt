@@ -11,6 +11,7 @@ import androidx.navigation3.ui.NavDisplay
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.rememberCoroutineScope
 import com.example.impactx.data.local.AppDatabase
+import com.example.impactx.data.remote.ApiClient
 import kotlinx.coroutines.launch
 import com.example.impactx.ui.screens.*
 
