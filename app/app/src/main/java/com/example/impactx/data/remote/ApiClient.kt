@@ -12,7 +12,7 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 object ApiClient {
-    private const val BASE_URL = "http://10.0.2.2:5000/" // Android emulator default gateway to localhost
+    private const val BASE_URL = "https://impactx-api-backend-h0eyf9c4fxd8dsbc.westus-01.azurewebsites.net/" // Android emulator default gateway to localhost
     private var apiService: ApiService? = null
 
     fun getApiService(context: Context): ApiService {
