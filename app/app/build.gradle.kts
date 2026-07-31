@@ -110,4 +110,7 @@ dependencies {
   implementation(libs.retrofit.converter.gson)
   implementation(libs.okhttp)
   implementation(libs.okhttp.logging.interceptor)
+
+  // Google Play Services Wearable
+  implementation(libs.play.services.wearable)
 }
