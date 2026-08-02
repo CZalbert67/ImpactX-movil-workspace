@@ -8,7 +8,7 @@ android {
     namespace = "com.example.impactxwearable"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.example.impactxwearable"
+        applicationId = "com.impactx.app"
         minSdk = 25
         targetSdk = 36
         versionCode = 1
