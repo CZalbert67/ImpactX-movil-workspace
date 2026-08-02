@@ -29,4 +29,12 @@ interface ApiService {
         @Header("Authorization") token: String,
         @Body request: UpdateFcmTokenRequest
     ): Response<Unit>
+
+    @GET("api/v1/vehicles")
+    suspend fun getVehicles(): Response<List<VehicleDto>>
+
+    @POST("api/v1/vehicles")
+    suspend fun createVehicle(
+        @Body request: CreateVehicleRequest
+    ): Response<VehicleDto>
 }

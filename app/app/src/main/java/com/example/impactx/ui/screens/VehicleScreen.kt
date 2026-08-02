@@ -1,5 +1,11 @@
 package com.example.impactx.ui.screens
 
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
+import com.example.impactx.data.remote.ApiClient
+import com.example.impactx.data.remote.CreateVehicleRequest
+import com.example.impactx.data.remote.VehicleDto
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -53,6 +59,39 @@ fun VehicleScreen(
     }
 
     // Form inputs state
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var apiVehicleList by remember { mutableStateOf<List<VehicleDto>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isSubmitting by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        isLoading = true
+        try {
+            val response = ApiClient.getApiService(context).getVehicles()
+            if (response.isSuccessful) {
+                apiVehicleList = response.body() ?: emptyList()
+            } else {
+                errorMessage = "Error al obtener vehículos: ${response.message()}"
+            }
+        } catch (e: Exception) {
+            errorMessage = "Error de red: ${e.localizedMessage}"
+        } finally {
+            isLoading = false
+        }
+    }
+
+    // Helper to map UI model list to TipoVehiculo enum string
+    fun deduceTipoVehiculo(brand: String, model: String): String {
+        val suvKeywords = listOf("CX-5", "CX-30", "RAV4", "Hilux", "Kicks", "Frontier", "Tracker", "Captiva", "Silverado", "Explorer", "Ranger", "Lobo", "Tiguan", "Taos", "CR-V", "HR-V", "Sportage", "Seltos", "Soul", "Tucson", "Creta", "Santa Fe", "X3", "X5", "Q3", "Q5", "e-tron", "GLA", "GLC", "GLE")
+        return if (suvKeywords.any { model.contains(it, ignoreCase = true) }) {
+            "Suv"
+        } else {
+            "Automovil"
+        }
+    }
+
     var selectedBrand by remember { mutableStateOf("") }
     var selectedModel by remember { mutableStateOf("") }
     var year by remember { mutableStateOf("") }
@@ -64,15 +103,7 @@ fun VehicleScreen(
     var brandExpanded by remember { mutableStateOf(false) }
     var modelExpanded by remember { mutableStateOf(false) }
 
-    var vehicleList by remember {
-        mutableStateOf(
-            listOf(
-                VehicleItem("Sedán", "Toyota", "Corolla", "2024", "XYZ-789-A", "Urbano", "55 km/h")
-            )
-        )
-    }
-
-    val limitReached = vehicleList.size >= maxVehicles
+    val limitReached = apiVehicleList.size >= maxVehicles
 
     Box(
         modifier = Modifier
@@ -128,8 +159,8 @@ fun VehicleScreen(
                     Column {
                         Text("Plan Activo: $currentPlan", fontWeight = FontWeight.Bold, color = Color.White)
                         Text(
-                            text = if (maxVehicles == 999) "Vehículos registrados: ${vehicleList.size}" 
-                                   else "Límite de vehículos: ${vehicleList.size} / $maxVehicles",
+                            text = if (maxVehicles == 999) "Vehículos registrados: ${apiVehicleList.size}" 
+                                   else "Límite de vehículos: ${apiVehicleList.size} / $maxVehicles",
                             fontSize = 12.sp,
                             color = GrayMuted
                         )
@@ -161,49 +192,77 @@ fun VehicleScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             // Render Vehicles
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                vehicleList.forEach { vehicle ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF102238).copy(alpha = 0.5f)),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "${vehicle.brand} ${vehicle.model} (${vehicle.year})",
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    fontSize = 15.sp
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(TealPrimary.copy(alpha = 0.15f))
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+            if (isLoading) {
+                CircularProgressIndicator(color = TealPrimary, modifier = Modifier.padding(16.dp))
+            } else if (errorMessage != null) {
+                Text(
+                    text = errorMessage!!,
+                    color = Color.Red,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(16.dp)
+                )
+            } else if (apiVehicleList.isEmpty()) {
+                Text(
+                    text = "No hay vehículos registrados.",
+                    color = GrayMuted,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(16.dp)
+                )
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    apiVehicleList.forEach { vehicle ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF102238).copy(alpha = 0.5f)),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(
-                                        text = vehicle.type,
-                                        fontSize = 11.sp,
-                                        color = TealPrimary,
-                                        fontWeight = FontWeight.Bold
+                                        text = "${vehicle.marca} ${vehicle.modelo} (${vehicle.ano})",
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        fontSize = 15.sp
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(TealPrimary.copy(alpha = 0.15f))
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = vehicle.tipoVehiculo,
+                                            fontSize = 11.sp,
+                                            color = TealPrimary,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "ID: ${vehicle.publicVehicleId.take(8)}...",
+                                        fontSize = 12.sp,
+                                        color = GrayMuted
+                                    )
+                                    Text(
+                                        text = "Uso: ${vehicle.usoPrincipalVehiculo}",
+                                        fontSize = 12.sp,
+                                        color = GrayMuted
                                     )
                                 }
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("Placas: ${vehicle.plate}", fontSize = 13.sp, color = GrayMuted)
-                                Text("Uso: ${vehicle.mainUse}", fontSize = 13.sp, color = GrayMuted)
                             }
                         }
                     }
@@ -421,14 +480,46 @@ fun VehicleScreen(
 
                 Button(
                     onClick = {
-                        if (selectedBrand.isNotBlank() && selectedModel.isNotBlank() && plate.isNotBlank()) {
-                            vehicleList = vehicleList + VehicleItem("Sedán", selectedBrand, selectedModel, year, plate, mainUse.ifBlank { "Particular" }, avgSpeed.ifBlank { "50 km/h" })
-                            selectedBrand = ""
-                            selectedModel = ""
-                            year = ""
-                            plate = ""
-                            mainUse = ""
-                            avgSpeed = ""
+                        if (selectedBrand.isNotBlank() && selectedModel.isNotBlank() && year.isNotBlank()) {
+                            coroutineScope.launch {
+                                isSubmitting = true
+                                try {
+                                    val apiService = ApiClient.getApiService(context)
+                                    val request = CreateVehicleRequest(
+                                        tipoVehiculo = deduceTipoVehiculo(selectedBrand, selectedModel),
+                                        marca = selectedBrand,
+                                        modelo = selectedModel,
+                                        ano = year.toIntOrNull() ?: 2024,
+                                        velocidadPromedio = avgSpeed.replace(Regex("[^0-9.]"), "").toDoubleOrNull() ?: 60.0,
+                                        usoPrincipalVehiculo = when (mainUse.trim().lowercase()) {
+                                            "ciudad", "urban", "urbano" -> "Ciudad"
+                                            "carretera", "highway" -> "Carretera"
+                                            else -> "Mixto"
+                                        },
+                                        esPrincipal = apiVehicleList.isEmpty()
+                                    )
+                                    val response = apiService.createVehicle(request)
+                                    if (response.isSuccessful && response.body() != null) {
+                                        Toast.makeText(context, "¡Vehículo registrado con éxito!", Toast.LENGTH_SHORT).show()
+                                        val refreshResponse = apiService.getVehicles()
+                                        if (refreshResponse.isSuccessful) {
+                                            apiVehicleList = refreshResponse.body() ?: emptyList()
+                                        }
+                                        selectedBrand = ""
+                                        selectedModel = ""
+                                        year = ""
+                                        plate = ""
+                                        mainUse = ""
+                                        avgSpeed = ""
+                                    } else {
+                                        Toast.makeText(context, "Error al registrar: ${response.message()}", Toast.LENGTH_LONG).show()
+                                    }
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Error de red: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                                } finally {
+                                    isSubmitting = false
+                                }
+                            }
                         }
                     },
                     modifier = Modifier
@@ -439,21 +530,15 @@ fun VehicleScreen(
                         containerColor = TealPrimary,
                         contentColor = Color.White
                     ),
-                    enabled = selectedBrand.isNotBlank() && selectedModel.isNotBlank() && plate.isNotBlank()
+                    enabled = selectedBrand.isNotBlank() && selectedModel.isNotBlank() && year.isNotBlank() && !isSubmitting
                 ) {
-                    Text("Registrar Vehículo", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    if (isSubmitting) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                    } else {
+                        Text("Registrar Vehículo", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
     }
 }
-
-data class VehicleItem(
-    val type: String,
-    val brand: String,
-    val model: String,
-    val year: String,
-    val plate: String,
-    val mainUse: String,
-    val avgSpeed: String
-)
