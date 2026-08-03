@@ -15,6 +15,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.RemoveRedEye
+import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,7 +39,8 @@ import kotlinx.coroutines.launch
 fun ContactsScreen(
     currentPlan: String,
     onNavigateBack: () -> Unit,
-    onNavigateToPlans: () -> Unit
+    onNavigateToPlans: () -> Unit,
+    onNavigateToMessages: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -62,6 +66,7 @@ fun ContactsScreen(
     var relationshipsList by remember { mutableStateOf<List<MonitoringRelationshipDto>>(emptyList()) }
     var isLoadingMonitors by remember { mutableStateOf(true) }
     var showInvitationCodeDialog by remember { mutableStateOf<String?>(null) }
+    var selectedRelationshipForDetail by remember { mutableStateOf<MonitoringRelationshipDto?>(null) }
 
     // --- Tab 2: Contactos SOS State ---
     var contactManualCodeInput by remember { mutableStateOf("") }
@@ -214,71 +219,7 @@ fun ContactsScreen(
             if (activeTab == 0) {
                 // --- MONITOREO TAB ---
                 
-                // My Invitation Code Section
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF102238))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Mi Código de Invitación",
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            fontSize = 14.sp
-                        )
-                        Text(
-                            text = "Comparte este código para que otros te agreguen como monitor.",
-                            color = GrayMuted,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        )
-                        
 
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF0A1624))
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = if (myProfileId.isEmpty()) "Cargando código..." else myProfileId,
-                                color = TealPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            if (myProfileId.isNotEmpty()) {
-                                Button(
-                                    onClick = {
-                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                        val clip = ClipData.newPlainText("ImpactX Profile ID", myProfileId)
-                                        clipboard.setPrimaryClip(clip)
-                                        Toast.makeText(context, "Código copiado", Toast.LENGTH_SHORT).show()
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                    shape = RoundedCornerShape(6.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = TealPrimary),
-                                    modifier = Modifier.height(32.dp)
-                                ) {
-                                    Text(
-                                        text = "Copiar",
-                                        color = Color.White,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
 
                 // Código Manual Recibido (Aceptar invitaciones compartidas)
                 Card(
@@ -493,7 +434,10 @@ fun ContactsScreen(
                         val code = if (isMyMonitor) relation.monitorPublicProfileId else (relation.monitoredPublicProfileId ?: "")
 
                         Card(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp)
+                                .clickable { selectedRelationshipForDetail = relation },
                             shape = RoundedCornerShape(12.dp),
                             colors = CardDefaults.cardColors(containerColor = Color(0xFF102238).copy(alpha = 0.5f))
                         ) {
@@ -1095,6 +1039,225 @@ fun ContactsScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
                 ) {
                     Text("Cerrar", color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF0C1929)
+        )
+    }
+
+    // --- Monitoring Relationship Detail Dialog (Accept/Reject/Options) ---
+    if (selectedRelationshipForDetail != null) {
+        val relation = selectedRelationshipForDetail!!
+        val isMyMonitor = relation.monitorPublicProfileId != myProfileId
+        val title = if (isMyMonitor) "Monitorea mi cuenta" else "Cuenta que monitoreo"
+        val userLabel = if (isMyMonitor) relation.monitorUsername else (relation.monitoredUsername ?: "Invitado")
+        val isRecipient = (relation.direction == "MonitorInvitesMonitored" && relation.monitoredPublicProfileId == myProfileId) ||
+                          (relation.direction == "MonitoredRequestsMonitor" && relation.monitorPublicProfileId == myProfileId)
+        
+        AlertDialog(
+            onDismissRequest = { selectedRelationshipForDetail = null },
+            title = { Text(text = if (relation.status.lowercase() == "pending") "Invitación de Monitoreo" else "Opciones de Monitoreo", color = Color.White) },
+            text = {
+                Column {
+                    Text(
+                        text = if (relation.status.lowercase() == "pending") {
+                            if (isRecipient) "Has recibido una invitación de monitoreo de @$userLabel para: $title."
+                            else "Invitación enviada a @$userLabel. Esperando confirmación."
+                        } else {
+                            "Conexión activa con @$userLabel ($title)."
+                        },
+                        color = Color.White,
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    if (relation.status.lowercase() == "pending") {
+                        if (isRecipient) {
+                            // Aceptar & Rechazar
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            try {
+                                                val api = ApiClient.getApiService(context)
+                                                val response = api.acceptMonitoringInvitation(
+                                                    AcceptMonitoringInvitationRequest(publicRelationshipId = relation.publicRelationshipId)
+                                                )
+                                                if (response.isSuccessful) {
+                                                    Toast.makeText(context, "Invitación aceptada", Toast.LENGTH_SHORT).show()
+                                                    selectedRelationshipForDetail = null
+                                                    refreshMonitors()
+                                                }
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Error al aceptar", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f).height(48.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
+                                ) {
+                                    Text("Aceptar", fontWeight = FontWeight.Bold)
+                                }
+                                
+                                OutlinedButton(
+                                    onClick = {
+                                        scope.launch {
+                                            try {
+                                                val api = ApiClient.getApiService(context)
+                                                val response = api.rejectMonitoringInvitation(
+                                                    RespondMonitoringInvitationRequest(publicRelationshipId = relation.publicRelationshipId)
+                                                )
+                                                if (response.isSuccessful) {
+                                                    Toast.makeText(context, "Invitación rechazada", Toast.LENGTH_SHORT).show()
+                                                    selectedRelationshipForDetail = null
+                                                    refreshMonitors()
+                                                }
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Error al rechazar", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f).height(48.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                                ) {
+                                    Text("Rechazar")
+                                }
+                            }
+                        } else {
+                            // Revocar
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        try {
+                                            val api = ApiClient.getApiService(context)
+                                            val response = api.revokeMonitoringRelationship(relation.publicRelationshipId)
+                                            if (response.isSuccessful) {
+                                                Toast.makeText(context, "Invitación revocada", Toast.LENGTH_SHORT).show()
+                                                selectedRelationshipForDetail = null
+                                                refreshMonitors()
+                                            }
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Error al revocar", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(48.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                            ) {
+                                Text("Revocar Invitación", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    } else {
+                        // Accepted Options: Ver monitoreo, Mensaje, Bloquear, Revocar
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    selectedRelationshipForDetail = null
+                                    Toast.makeText(context, "Mostrando mapa de monitoreo de @$userLabel...", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.fillMaxWidth().height(44.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.RemoveRedEye, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Ver monitoreo", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            
+                            OutlinedButton(
+                                onClick = {
+                                    selectedRelationshipForDetail = null
+                                    onNavigateToMessages() // Go to messages!
+                                },
+                                modifier = Modifier.fillMaxWidth().height(44.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.ChatBubbleOutline, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Mensaje")
+                                }
+                            }
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        scope.launch {
+                                            try {
+                                                val api = ApiClient.getApiService(context)
+                                                val response = api.blockMonitoringRelationship(relation.publicRelationshipId)
+                                                if (response.isSuccessful) {
+                                                    Toast.makeText(context, "Usuario bloqueado", Toast.LENGTH_SHORT).show()
+                                                    selectedRelationshipForDetail = null
+                                                    refreshMonitors()
+                                                }
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Error al bloquear", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f).height(44.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFF59E0B)),
+                                    border = BorderStroke(1.dp, Color(0xFFF59E0B))
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Block, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFFF59E0B))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Bloquear", fontSize = 12.sp)
+                                    }
+                                }
+                                
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            try {
+                                                val api = ApiClient.getApiService(context)
+                                                val response = api.revokeMonitoringRelationship(relation.publicRelationshipId)
+                                                if (response.isSuccessful) {
+                                                    Toast.makeText(context, "Relación revocada", Toast.LENGTH_SHORT).show()
+                                                    selectedRelationshipForDetail = null
+                                                    refreshMonitors()
+                                                }
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Error al revocar", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f).height(44.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Revocar", fontSize = 12.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { selectedRelationshipForDetail = null }) {
+                    Text("Cerrar", color = TealPrimary)
                 }
             },
             containerColor = Color(0xFF0C1929)

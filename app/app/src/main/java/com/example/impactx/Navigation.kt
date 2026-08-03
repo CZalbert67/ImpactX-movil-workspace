@@ -115,7 +115,8 @@ fun MainNavigation() {
           ContactsScreen(
             currentPlan = activePlan,
             onNavigateBack = { backStack.removeLastOrNull() },
-            onNavigateToPlans = { backStack.add(Plans) }
+            onNavigateToPlans = { backStack.add(Plans) },
+            onNavigateToMessages = { backStack.add(Messages) }
           )
         }
         entry<ActiveTrip> {

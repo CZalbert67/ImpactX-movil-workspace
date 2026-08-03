@@ -22,6 +22,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Close
+import com.example.impactx.data.remote.*
+import kotlinx.coroutines.launch
+import android.widget.Toast
 
 @Composable
 fun HomeScreen(
@@ -61,6 +69,39 @@ fun HomeScreen(
     // User name edit dialog states
     var showEditNameDialog by remember { mutableStateOf(false) }
     var newNameInput by remember { mutableStateOf(userName) }
+
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var showNotificationsDialog by remember { mutableStateOf(false) }
+    var unreadNotificationsCount by remember { mutableIntStateOf(0) }
+    var notificationsList by remember { mutableStateOf<List<NotificacionDto>>(emptyList()) }
+    var isLoadingNotifications by remember { mutableStateOf(false) }
+
+    fun refreshNotifications() {
+        isLoadingNotifications = true
+        scope.launch {
+            try {
+                val api = ApiClient.getApiService(context)
+                val response = api.getNotifications()
+                if (response.isSuccessful) {
+                    notificationsList = response.body() ?: emptyList()
+                }
+                
+                val countResponse = api.getUnreadNotificationsCount()
+                if (countResponse.isSuccessful) {
+                    unreadNotificationsCount = countResponse.body()?.get("noLeidas") ?: 0
+                }
+            } catch (e: Exception) {
+                // Silent catch
+            } finally {
+                isLoadingNotifications = false
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        refreshNotifications()
+    }
 
     // Initials helper
     val initials = remember(userName) {
@@ -171,6 +212,32 @@ fun HomeScreen(
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
+                    }
+                }
+
+                Box {
+                    IconButton(
+                        onClick = {
+                            refreshNotifications()
+                            showNotificationsDialog = true
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = "Notificaciones",
+                            tint = if (unreadNotificationsCount > 0) TealPrimary else Color.White,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    if (unreadNotificationsCount > 0) {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .clip(CircleShape)
+                                .background(Color.Red)
+                                .align(Alignment.TopEnd)
+                                .offset(x = (-2).dp, y = 2.dp)
+                        )
                     }
                 }
             }
@@ -530,6 +597,190 @@ fun HomeScreen(
                 }
             },
             containerColor = Color(0xFF102238),
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
+
+    // Notifications Dialog Overlay
+    if (showNotificationsDialog) {
+        AlertDialog(
+            onDismissRequest = { showNotificationsDialog = false },
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🔔", fontSize = 20.sp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Notificaciones",
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 18.sp
+                        )
+                    }
+                    IconButton(onClick = { showNotificationsDialog = false }) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
+                    }
+                }
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxHeight(0.6f).fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Marcar todas como leídas",
+                            color = TealPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clickable {
+                                    scope.launch {
+                                        try {
+                                            val api = ApiClient.getApiService(context)
+                                            val response = api.markAllNotificationsAsRead()
+                                            if (response.isSuccessful) {
+                                                refreshNotifications()
+                                            }
+                                        } catch (e: Exception) {
+                                            // Silent catch
+                                        }
+                                    }
+                                }
+                                .padding(vertical = 4.dp, horizontal = 2.dp)
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        Text(
+                            text = "Borrar todo",
+                            color = Color(0xFFEF4444),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clickable {
+                                    scope.launch {
+                                        try {
+                                            val api = ApiClient.getApiService(context)
+                                            val response = api.deleteAllNotifications()
+                                            if (response.isSuccessful) {
+                                                refreshNotifications()
+                                            }
+                                        } catch (e: Exception) {
+                                            // Silent catch
+                                        }
+                                    }
+                                }
+                                .padding(vertical = 4.dp, horizontal = 2.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (isLoadingNotifications) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = TealPrimary)
+                        }
+                    } else if (notificationsList.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "No tienes notificaciones nuevas.",
+                                color = GrayMuted,
+                                fontSize = 14.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            notificationsList.forEach { notification ->
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            if (!notification.leida) {
+                                                scope.launch {
+                                                    try {
+                                                        val api = ApiClient.getApiService(context)
+                                                        api.toggleNotificationRead(notification.id, ToggleReadRequest(leida = true))
+                                                        refreshNotifications()
+                                                    } catch (e: Exception) {
+                                                        // Silent catch
+                                                    }
+                                                }
+                                            }
+                                        },
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (notification.leida) Color(0xFF162A45) else Color(0xFF1E3A5F)
+                                    ),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (!notification.leida) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(8.dp)
+                                                    .clip(CircleShape)
+                                                    .background(TealPrimary)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                        }
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = notification.titulo,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White,
+                                                fontSize = 13.sp
+                                            )
+                                            Text(
+                                                text = notification.mensaje,
+                                                color = if (notification.leida) GrayMuted else Color.White,
+                                                fontSize = 12.sp,
+                                                modifier = Modifier.padding(top = 2.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        IconButton(
+                                            onClick = {
+                                                scope.launch {
+                                                    try {
+                                                        val api = ApiClient.getApiService(context)
+                                                        val response = api.deleteNotification(notification.id)
+                                                        if (response.isSuccessful) {
+                                                            refreshNotifications()
+                                                        }
+                                                    } catch (e: Exception) {
+                                                        // Silent catch
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "Borrar",
+                                                tint = Color(0xFFEF4444).copy(alpha = 0.8f),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            containerColor = Color(0xFF0C1929),
             shape = RoundedCornerShape(16.dp)
         )
     }

@@ -148,6 +148,11 @@ interface ApiService {
         @retrofit2.http.Path("publicRelationshipId") publicRelationshipId: String
     ): Response<Void>
 
+    @POST("api/v1/monitoring-relationships/{publicRelationshipId}/block")
+    suspend fun blockMonitoringRelationship(
+        @retrofit2.http.Path("publicRelationshipId") publicRelationshipId: String
+    ): Response<Void>
+
     // ---- Quick Messages ----
     @GET("api/v1/quick-messages/templates")
     suspend fun getQuickMessageTemplates(): Response<List<QuickMessageTemplateDto>>
@@ -176,4 +181,31 @@ interface ApiService {
     suspend fun markQuickMessageRead(
         @retrofit2.http.Path("publicMessageId") publicMessageId: String
     ): Response<Void>
+
+    // ---- Notificaciones ----
+    @GET("api/v1/notifications")
+    suspend fun getNotifications(
+        @retrofit2.http.Query("pageSize") pageSize: Int? = null,
+        @retrofit2.http.Query("continuationToken") continuationToken: String? = null
+    ): Response<List<NotificacionDto>>
+
+    @GET("api/v1/notifications/unread-count")
+    suspend fun getUnreadNotificationsCount(): Response<Map<String, Int>>
+
+    @PATCH("api/v1/notifications/{id}/read")
+    suspend fun toggleNotificationRead(
+        @retrofit2.http.Path("id") id: String,
+        @Body request: ToggleReadRequest
+    ): Response<Map<String, String>>
+
+    @PATCH("api/v1/notifications/read-all")
+    suspend fun markAllNotificationsAsRead(): Response<Map<String, String>>
+
+    @DELETE("api/v1/notifications/{id}")
+    suspend fun deleteNotification(
+        @retrofit2.http.Path("id") id: String
+    ): Response<Map<String, String>>
+
+    @DELETE("api/v1/notifications")
+    suspend fun deleteAllNotifications(): Response<Map<String, String>>
 }

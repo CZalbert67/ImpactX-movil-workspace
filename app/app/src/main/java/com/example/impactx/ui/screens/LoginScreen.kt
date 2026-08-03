@@ -18,6 +18,9 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import com.example.impactx.data.local.AppDatabase
 import com.example.impactx.data.local.SessionEntity
 import com.example.impactx.data.remote.ApiClient
@@ -106,14 +109,14 @@ fun LoginScreen(
                 shape = RoundedCornerShape(12.dp),
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
-                    Text(
-                        text = if (passwordVisible) "Ocultar" else "Mostrar",
-                        color = TealPrimary,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .clickable { passwordVisible = !passwordVisible }
-                            .padding(end = 12.dp)
-                    )
+                    val icon = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = if (passwordVisible) "Ocultar contraseña" else "Mostrar contraseña",
+                            tint = TealPrimary
+                        )
+                    }
                 },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = TealPrimary,
