@@ -47,6 +47,13 @@ class SensorService : Service(), SensorEventListener {
     private val _impactDetected = MutableStateFlow(false)
     val impactDetected = _impactDetected.asStateFlow()
 
+    private val _isTripActive = MutableStateFlow(false)
+    val isTripActive = _isTripActive.asStateFlow()
+
+    fun setTripActive(active: Boolean) {
+        _isTripActive.value = active
+    }
+
     private var lastTelemetryTime = 0L
 
     inner class SensorBinder : Binder() {

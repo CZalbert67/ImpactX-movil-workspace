@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -29,6 +30,7 @@ fun WearAlertScreen(
 ) {
     val context = LocalContext.current
     var secondsLeft by remember { mutableStateOf(15) }
+    var sosSent by remember { mutableStateOf(false) }
     
     // Warning background blinking animation
     val infiniteTransition = rememberInfiniteTransition(label = "blink")
@@ -72,6 +74,7 @@ fun WearAlertScreen(
         
         // Timer finished -> Trigger emergency SOS
         onTimeout()
+        sosSent = true
     }
 
     // Stop vibration when screen is closed
@@ -92,62 +95,104 @@ fun WearAlertScreen(
             verticalArrangement = Arrangement.Center,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp)
+                .padding(12.dp)
         ) {
-            Text(
-                text = "🚨 ALERTA 🚨",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = "¿ESTÁS BIEN?",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = Color.White
-            )
-
-            Spacer(modifier = Modifier.height(2.dp))
-
-            Text(
-                text = "Mandando SOS en:",
-                fontSize = 10.sp,
-                color = Color.LightGray
-            )
-
-            // Large Countdown Timer
-            Text(
-                text = "$secondsLeft",
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Black,
-                color = Color.White
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Cancel Button ("ESTOY BIEN")
-            Button(
-                onClick = {
-                    vibrator.cancel()
-                    onCancel()
-                },
-                colors = ButtonDefaults.buttonColors(
-                    backgroundColor = Color(0xFF00BFA5)
-                ),
-                modifier = Modifier
-                    .fillMaxWidth(0.9f)
-                    .height(34.dp)
-                    .clip(RoundedCornerShape(8.dp))
-            ) {
+            if (sosSent) {
                 Text(
-                    text = "ESTOY BIEN",
+                    text = "🚨 SOS ENVIADO 🚨",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = "Se ha alertado a tus contactos.",
                     fontSize = 11.sp,
+                    color = Color.LightGray,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Entendido Button to exit alarm screen
+                Button(
+                    onClick = {
+                        onCancel()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        backgroundColor = Color(0xFF00BFA5)
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .height(34.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                ) {
+                    Text(
+                        text = "ENTENDIDO",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            } else {
+                Text(
+                    text = "🚨 ALERTA 🚨",
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = "¿ESTÁS BIEN?",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White
+                )
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                Text(
+                    text = "Mandando SOS en:",
+                    fontSize = 10.sp,
+                    color = Color.LightGray
+                )
+
+                // Large Countdown Timer
+                Text(
+                    text = "$secondsLeft",
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Cancel Button ("ESTOY BIEN")
+                Button(
+                    onClick = {
+                        vibrator.cancel()
+                        onCancel()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        backgroundColor = Color(0xFF00BFA5)
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .height(34.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                ) {
+                    Text(
+                        text = "ESTOY BIEN",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
             }
         }
     }

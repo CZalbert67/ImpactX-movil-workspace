@@ -32,7 +32,6 @@ class MainActivity : ComponentActivity() {
     private var sensorService by mutableStateOf<SensorService?>(null)
     private var isServiceRunning by mutableStateOf(false)
     private var isBound by mutableStateOf(false)
-    private var isTripActive by mutableStateOf(false)
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -64,6 +63,19 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         checkAndRequestPermissions()
 
+        // Prevent screen sleep and turn screen on for emergency alerts
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
         setContent {
             ImpactXWearableTheme {
                 Surface(
@@ -78,6 +90,7 @@ class MainActivity : ComponentActivity() {
                         val maxGForce by service.maxGForce.collectAsState()
                         val isConnected by service.isConnected.collectAsState()
                         val impactDetected by service.impactDetected.collectAsState()
+                        val isTripActive by service.isTripActive.collectAsState()
 
                         val triggerAlarmFromIntent = intent?.getBooleanExtra("TRIGGER_ALARM", false) ?: false
                         if (triggerAlarmFromIntent && !impactDetected) {
@@ -112,12 +125,12 @@ class MainActivity : ComponentActivity() {
                                 onStartTrip = {
                                     // Signal the phone to start a trip (phone will capture GPS)
                                     service.sendSignalToPhone("/start-trip", "START")
-                                    isTripActive = true
+                                    service.setTripActive(true)
                                     Toast.makeText(this, "🚗 Viaje iniciado", Toast.LENGTH_SHORT).show()
                                 },
                                 onFinishTrip = {
                                     service.sendSignalToPhone("/finish-trip", "FINISH")
-                                    isTripActive = false
+                                    service.setTripActive(false)
                                     Toast.makeText(this, "🏁 Viaje finalizado", Toast.LENGTH_SHORT).show()
                                 }
                             )
@@ -139,6 +152,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
     }
 
     private fun checkAndRequestPermissions() {

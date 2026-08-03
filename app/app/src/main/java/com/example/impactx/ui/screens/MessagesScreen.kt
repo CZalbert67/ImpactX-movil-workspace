@@ -56,7 +56,7 @@ fun MessagesScreen(
     
     // UI dropdown states
     var isRecipientDropdownExpanded by remember { mutableStateOf(false) }
-    var isTemplateDropdownExpanded by remember { mutableStateOf(false) }
+    var showTemplatesOverlay by remember { mutableStateOf(false) }
     var showNewTemplateDialog by remember { mutableStateOf(false) }
     var newTemplateTextInput by remember { mutableStateOf("") }
 
@@ -278,7 +278,7 @@ fun MessagesScreen(
 
             // --- TEMPLATE SELECTOR AND SEND BUTTON ---
             Text(
-                text = "PLANTILLA DE ENVÍO RÁPIDO",
+                text = "Mensaje rápido",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 color = GrayMuted,
@@ -298,43 +298,20 @@ fun MessagesScreen(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
                             .background(Color(0xFF102238))
-                            .clickable { isTemplateDropdownExpanded = true }
+                            .clickable { showTemplatesOverlay = true }
                             .padding(horizontal = 16.dp, vertical = 14.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = selectedTemplate?.text ?: "Selecciona plantilla...",
+                            text = selectedTemplate?.let { temp ->
+                                "${if (temp.isSystem) "Oficial" else "Personal"}: ${temp.text}"
+                            } ?: "Selecciona plantilla...",
                             color = Color.White,
                             fontSize = 14.sp,
                             maxLines = 1
                         )
                         Icon(imageVector = Icons.Default.ArrowDropDown, contentDescription = null, tint = TealPrimary)
-                    }
-
-                    DropdownMenu(
-                        expanded = isTemplateDropdownExpanded,
-                        onDismissRequest = { isTemplateDropdownExpanded = false },
-                        modifier = Modifier
-                            .fillMaxWidth(0.6f)
-                            .background(Color(0xFF0F1E30))
-                    ) {
-                        if (isLoadingTemplates) {
-                            DropdownMenuItem(
-                                text = { Text("Cargando...", color = Color.White) },
-                                onClick = {}
-                            )
-                        } else {
-                            templatesList.forEach { temp ->
-                                DropdownMenuItem(
-                                    text = { Text(temp.text, color = Color.White) },
-                                    onClick = {
-                                        selectedTemplate = temp
-                                        isTemplateDropdownExpanded = false
-                                    }
-                                )
-                            }
-                        }
                     }
                 }
 
@@ -564,107 +541,146 @@ fun MessagesScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+        }
+    }
 
-            // --- TEMPLATES MANAGER SECTION ---
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "MIS PLANTILLAS PERSONALIZADAS",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = GrayMuted,
-                    letterSpacing = 1.sp
-                )
-                IconButton(
-                    onClick = { showNewTemplateDialog = true },
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(TealPrimary)
-                ) {
-                    Icon(imageVector = Icons.Default.Add, contentDescription = "Añadir", tint = Color.White, modifier = Modifier.size(16.dp))
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Templates list manager
-            if (isLoadingTemplates) {
-                CircularProgressIndicator(color = TealPrimary)
-            } else {
-                Column(
+    // --- Custom Templates Overlay Dialog ---
+    if (showTemplatesOverlay) {
+        AlertDialog(
+            onDismissRequest = { showTemplatesOverlay = false },
+            title = {
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
                 ) {
-                    templatesList.forEach { temp ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF102238).copy(alpha = 0.5f))
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    modifier = Modifier.weight(1f),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(if (temp.isSystem) Color(0xFF00BFA5).copy(alpha = 0.15f) else Color(0xFF64748B).copy(alpha = 0.15f))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = if (temp.isSystem) "OFICIAL" else "PROPIA",
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (temp.isSystem) Color(0xFF00BFA5) else Color(0xFF94A3B8)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(
-                                        text = temp.text,
-                                        color = Color.White,
-                                        fontSize = 13.sp,
-                                        maxLines = 2
-                                    )
-                                }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Plantillas de mensajes",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Puedes crear hasta 10 plantillas personales.",
+                            fontSize = 11.sp,
+                            color = GrayMuted
+                        )
+                    }
+                    Text(
+                        text = "✕",
+                        color = GrayMuted,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clickable { showTemplatesOverlay = false }
+                            .padding(start = 8.dp, bottom = 8.dp)
+                    )
+                }
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = {
+                            showTemplatesOverlay = false
+                            showNewTemplateDialog = true
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = TealPrimary),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.align(Alignment.End).height(32.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                    ) {
+                        Text("+ Nueva", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
 
-                                if (!temp.isSystem) {
-                                    IconButton(
-                                        onClick = {
-                                            scope.launch {
-                                                try {
-                                                    val api = ApiClient.getApiService(context)
-                                                    val response = api.deleteQuickMessageTemplate(temp.publicTemplateId)
-                                                    if (response.isSuccessful) {
-                                                        Toast.makeText(context, "Plantilla eliminada", Toast.LENGTH_SHORT).show()
-                                                        refreshTemplates()
-                                                    }
-                                                } catch (e: Exception) {
-                                                    Toast.makeText(context, "Error al eliminar plantilla", Toast.LENGTH_SHORT).show()
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Box(modifier = Modifier.heightIn(max = 280.dp)) {
+                        Column(
+                            modifier = Modifier.verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (isLoadingTemplates) {
+                                Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator(color = TealPrimary)
+                                }
+                            } else {
+                                templatesList.forEach { temp ->
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                selectedTemplate = temp
+                                                showTemplatesOverlay = false
+                                            },
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF162534))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.weight(1f),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .background(if (temp.isSystem) Color(0xFF00BFA5).copy(alpha = 0.15f) else Color(0xFF64748B).copy(alpha = 0.15f))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = if (temp.isSystem) "Oficial" else "Personal",
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (temp.isSystem) Color(0xFF00BFA5) else Color(0xFF94A3B8)
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Text(
+                                                    text = temp.text,
+                                                    color = Color.White,
+                                                    fontSize = 13.sp,
+                                                    maxLines = 2
+                                                )
+                                            }
+                                            if (!temp.isSystem) {
+                                                IconButton(
+                                                    onClick = {
+                                                        scope.launch {
+                                                            try {
+                                                                val api = ApiClient.getApiService(context)
+                                                                val response = api.deleteQuickMessageTemplate(temp.publicTemplateId)
+                                                                if (response.isSuccessful) {
+                                                                    Toast.makeText(context, "Plantilla eliminada", Toast.LENGTH_SHORT).show()
+                                                                    refreshTemplates()
+                                                                }
+                                                            } catch (e: Exception) {
+                                                                Toast.makeText(context, "Error al eliminar plantilla", Toast.LENGTH_SHORT).show()
+                                                            }
+                                                        }
+                                                    },
+                                                    modifier = Modifier.size(24.dp)
+                                                ) {
+                                                    Icon(imageVector = Icons.Default.Delete, contentDescription = "Eliminar", tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
                                                 }
                                             }
-                                        },
-                                        modifier = Modifier.size(24.dp)
-                                    ) {
-                                        Icon(imageVector = Icons.Default.Delete, contentDescription = "Eliminar", tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
-        }
+            },
+            confirmButton = {},
+            containerColor = Color(0xFF0C1929)
+        )
     }
 
     // --- Create New Custom Template Dialog ---
