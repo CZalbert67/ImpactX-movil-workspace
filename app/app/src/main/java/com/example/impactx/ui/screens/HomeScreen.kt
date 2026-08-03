@@ -34,6 +34,7 @@ fun HomeScreen(
     onNavigateToContacts: () -> Unit,
     onNavigateToPlans: () -> Unit,
     onNavigateToWearableSync: () -> Unit,
+    onNavigateToMessages: () -> Unit,
     onLogout: () -> Unit
 ) {
     // Pulse animation for the active shield
@@ -438,6 +439,30 @@ fun HomeScreen(
                         Column {
                             Text("Contactos y Monitores", fontWeight = FontWeight.Bold, color = Color.White)
                             Text("Red de alerta en colisiones", fontSize = 12.sp, color = GrayMuted)
+                        }
+                    }
+                    Text("›", fontSize = 24.sp, color = GrayMuted)
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Messages and Chat Card
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF102238))
+                        .clickable { onNavigateToMessages() }
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("💬", fontSize = 20.sp)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("Mensajes de Emergencia", fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("Chat rápido de plantillas", fontSize = 12.sp, color = GrayMuted)
                         }
                     }
                     Text("›", fontSize = 24.sp, color = GrayMuted)

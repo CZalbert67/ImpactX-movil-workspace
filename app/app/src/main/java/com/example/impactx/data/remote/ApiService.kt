@@ -63,16 +63,6 @@ interface ApiService {
         @Body request: DetectAlertRequest
     ): Response<AlertStatusDto>
 
-    // ---- Quick Messages / Chat ----
-    @POST("api/v1/quick-messages/send")
-    suspend fun sendQuickMessage(
-        @Body request: SendQuickMessageRequest
-    ): Response<QuickMessageDto>
-
-    @GET("api/v1/quick-messages/history")
-    suspend fun getMessageHistory(
-        @retrofit2.http.Query("otherPublicProfileId") otherPublicProfileId: String? = null
-    ): Response<List<QuickMessageDto>>
 
     // ---- Plans ----
     @GET("api/v1/plans")
@@ -113,5 +103,62 @@ interface ApiService {
     @DELETE("api/v1/monitors/{id}")
     suspend fun revokeMonitor(
         @retrofit2.http.Path("id") monitorId: String
+    ): Response<Void>
+
+    // ---- Profile Username ----
+    @GET("api/v1/profile/username")
+    suspend fun getProfileUsername(): Response<UserProfileUsernameDto>
+
+    // ---- Monitoring Relationships ----
+    @GET("api/v1/monitoring-relationships")
+    suspend fun getMonitoringRelationships(): Response<List<MonitoringRelationshipDto>>
+
+    @POST("api/v1/monitoring-relationships/invitations")
+    suspend fun createMonitoringInvitation(
+        @Body request: CreateMonitoringInvitationRequest
+    ): Response<CreateMonitoringInvitationResponse>
+
+    @POST("api/v1/monitoring-relationships/invitations/accept")
+    suspend fun acceptMonitoringInvitation(
+        @Body request: AcceptMonitoringInvitationRequest
+    ): Response<Void>
+
+    @POST("api/v1/monitoring-relationships/invitations/reject")
+    suspend fun rejectMonitoringInvitation(
+        @Body request: RespondMonitoringInvitationRequest
+    ): Response<Void>
+
+    @DELETE("api/v1/monitoring-relationships/{publicRelationshipId}")
+    suspend fun revokeMonitoringRelationship(
+        @retrofit2.http.Path("publicRelationshipId") publicRelationshipId: String
+    ): Response<Void>
+
+    // ---- Quick Messages ----
+    @GET("api/v1/quick-messages/templates")
+    suspend fun getQuickMessageTemplates(): Response<List<QuickMessageTemplateDto>>
+
+    @POST("api/v1/quick-messages/templates")
+    suspend fun createQuickMessageTemplate(
+        @Body request: UpsertQuickMessageTemplateRequest
+    ): Response<QuickMessageTemplateDto>
+
+    @DELETE("api/v1/quick-messages/templates/{publicTemplateId}")
+    suspend fun deleteQuickMessageTemplate(
+        @retrofit2.http.Path("publicTemplateId") publicTemplateId: String
+    ): Response<Void>
+
+    @POST("api/v1/quick-messages/send")
+    suspend fun sendQuickMessage(
+        @Body request: SendQuickMessageRequest
+    ): Response<QuickMessageDto>
+
+    @GET("api/v1/quick-messages/history")
+    suspend fun getQuickMessageHistory(
+        @retrofit2.http.Query("otherPublicProfileId") otherPublicProfileId: String?
+    ): Response<List<QuickMessageDto>>
+
+    @PATCH("api/v1/quick-messages/{publicMessageId}/read")
+    suspend fun markQuickMessageRead(
+        @retrofit2.http.Path("publicMessageId") publicMessageId: String
     ): Response<Void>
 }

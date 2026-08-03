@@ -95,6 +95,7 @@ fun MainNavigation() {
             onNavigateToContacts = { backStack.add(Contacts) },
             onNavigateToPlans = { backStack.add(Plans) },
             onNavigateToWearableSync = { backStack.add(WearableSync) },
+            onNavigateToMessages = { backStack.add(Messages) },
             onLogout = { 
               coroutineScope.launch {
                 val db = AppDatabase.getDatabase(context)
@@ -155,6 +156,11 @@ fun MainNavigation() {
         }
         entry<WearableSync> {
           WearableSyncScreen(
+            onNavigateBack = { backStack.removeLastOrNull() }
+          )
+        }
+        entry<Messages> {
+          MessagesScreen(
             onNavigateBack = { backStack.removeLastOrNull() }
           )
         }

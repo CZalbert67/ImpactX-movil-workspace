@@ -15,3 +15,4 @@ import kotlinx.serialization.Serializable
 @Serializable data object Plans : NavKey
 @Serializable data object EmergencyChat : NavKey
 @Serializable data object WearableSync : NavKey
+@Serializable data object Messages : NavKey
