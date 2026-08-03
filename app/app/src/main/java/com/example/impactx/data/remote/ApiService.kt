@@ -77,19 +77,34 @@ interface ApiService {
         @Body request: UpdateMedicalProfileRequest
     ): Response<MedicalProfileDto>
 
-    // ---- Contacts ----
+    // ---- Contacts (V1 Account Relationships) ----
     @GET("api/v1/contacts")
-    suspend fun getContacts(): Response<List<ContactoDto>>
+    suspend fun getEmergencyContacts(): Response<List<EmergencyContactDto>>
 
-    @POST("api/v1/contacts")
-    suspend fun createContact(
-        @Body request: CreateContactoRequest
-    ): Response<ContactoDto>
+    @POST("api/v1/contacts/invitations")
+    suspend fun createEmergencyContactInvitation(
+        @Body request: CreateEmergencyContactInvitationRequest
+    ): Response<CreateEmergencyContactInvitationResponse>
+
+    @POST("api/v1/contacts/invitations/accept")
+    suspend fun acceptEmergencyContactInvitation(
+        @Body request: RespondEmergencyContactInvitationRequest
+    ): Response<Unit>
+
+    @POST("api/v1/contacts/invitations/reject")
+    suspend fun rejectEmergencyContactInvitation(
+        @Body request: RespondEmergencyContactInvitationRequest
+    ): Response<Unit>
+
+    @PATCH("api/v1/contacts/{id}/primary")
+    suspend fun makeEmergencyContactPrimary(
+        @retrofit2.http.Path("id") id: String
+    ): Response<EmergencyContactDto>
 
     @DELETE("api/v1/contacts/{id}")
-    suspend fun deleteContact(
-        @retrofit2.http.Path("id") contactId: String
-    ): Response<Void>
+    suspend fun revokeEmergencyContact(
+        @retrofit2.http.Path("id") id: String
+    ): Response<Unit>
 
     // ---- Monitors ----
     @GET("api/v1/monitors")

@@ -64,11 +64,14 @@ fun ContactsScreen(
     var showInvitationCodeDialog by remember { mutableStateOf<String?>(null) }
 
     // --- Tab 2: Contactos SOS State ---
-    var newContactName by remember { mutableStateOf("") }
-    var newContactPhone by remember { mutableStateOf("") }
-    var contactsList by remember { mutableStateOf<List<ContactoDto>>(emptyList()) }
+    var contactManualCodeInput by remember { mutableStateOf("") }
+    var contactInviteUsernameInput by remember { mutableStateOf("") }
+    var contactInviteRelationshipInput by remember { mutableStateOf("") }
+    var contactInviteMakePrimary by remember { mutableStateOf(false) }
+    var contactsList by remember { mutableStateOf<List<EmergencyContactDto>>(emptyList()) }
     var isLoadingContacts by remember { mutableStateOf(true) }
     var isSavingContact by remember { mutableStateOf(false) }
+    var showContactInvitationCodeDialog by remember { mutableStateOf<String?>(null) }
 
     // --- Actions ---
     fun refreshMonitors() {
@@ -93,7 +96,7 @@ fun ContactsScreen(
         scope.launch {
             try {
                 val api = ApiClient.getApiService(context)
-                val response = api.getContacts()
+                val response = api.getEmergencyContacts()
                 if (response.isSuccessful) {
                     contactsList = response.body() ?: emptyList()
                 }
@@ -619,7 +622,7 @@ fun ContactsScreen(
                         Column {
                             Text("Contactos de Respaldo", fontWeight = FontWeight.Bold, color = Color.White)
                             Text(
-                                text = "Contactos manuales registrados: ${contactsList.size}",
+                                text = "Contactos vinculados: ${contactsList.size}",
                                 fontSize = 12.sp,
                                 color = GrayMuted
                             )
@@ -627,14 +630,82 @@ fun ContactsScreen(
                     }
                 }
 
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Código Manual Recibido (Aceptar invitaciones de contacto)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF102238))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Código Manual Recibido",
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = "Ingresa el código manual recibido para aceptar ser contacto SOS de otro usuario.",
+                            color = GrayMuted,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                        OutlinedTextField(
+                            value = contactManualCodeInput,
+                            onValueChange = { contactManualCodeInput = it },
+                            placeholder = { Text("Pegar código de invitación", color = GrayMuted) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = TealPrimary,
+                                unfocusedBorderColor = GrayMuted,
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White
+                            ),
+                            singleLine = true
+                        )
+                        
+                        Spacer(modifier = Modifier.height(12.dp))
+                        
+                        Button(
+                            onClick = {
+                                if (contactManualCodeInput.isBlank()) return@Button
+                                scope.launch {
+                                    try {
+                                        val api = ApiClient.getApiService(context)
+                                        val response = api.acceptEmergencyContactInvitation(
+                                            RespondEmergencyContactInvitationRequest(code = contactManualCodeInput.trim().uppercase())
+                                        )
+                                        if (response.isSuccessful) {
+                                            Toast.makeText(context, "Invitación SOS aceptada con éxito!", Toast.LENGTH_SHORT).show()
+                                            contactManualCodeInput = ""
+                                            refreshContacts()
+                                        } else {
+                                            Toast.makeText(context, "Código inválido o expirado", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Error de red", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
+                        ) {
+                            Text("Aceptar Invitación SOS", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Traditional SOS Contacts List
+                // List of Contacts
                 if (isLoadingContacts) {
                     CircularProgressIndicator(color = TealPrimary, modifier = Modifier.padding(24.dp))
                 } else if (contactsList.isEmpty()) {
                     Text(
-                        text = "Aún no tienes contactos manuales registrados.",
+                        text = "Aún no tienes contactos SOS vinculados.",
                         color = GrayMuted,
                         fontSize = 14.sp,
                         modifier = Modifier.padding(vertical = 16.dp)
@@ -645,6 +716,9 @@ fun ContactsScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         contactsList.forEach { contact ->
+                            val contactUser = if (contact.isOwner) contact.contactUsername ?: "Desconocido" else contact.ownerUsername
+                            val contactFullName = if (contact.isOwner) contact.contactName ?: "Contacto SOS" else contact.ownerName
+                            
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
@@ -652,81 +726,139 @@ fun ContactsScreen(
                                     containerColor = Color(0xFF102238).copy(alpha = 0.5f)
                                 )
                             ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(40.dp)
-                                                .clip(CircleShape)
-                                                .background(TealPrimary.copy(alpha = 0.2f)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = contact.nombre.take(2).uppercase(),
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = TealPrimary
-                                            )
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(40.dp)
+                                                    .clip(CircleShape)
+                                                    .background(TealPrimary.copy(alpha = 0.2f)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = contactFullName.take(2).uppercase(),
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = TealPrimary
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Column {
+                                                Text(
+                                                    text = "@$contactUser",
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White
+                                                )
+                                                Text(
+                                                    text = "${contactFullName} (${contact.relationship ?: "Familiar"})",
+                                                    fontSize = 12.sp,
+                                                    color = GrayMuted
+                                                )
+                                            }
                                         }
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column {
-                                            Text(
-                                                text = contact.nombre,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White
-                                            )
-                                            Text(
-                                                text = contact.telefono,
-                                                fontSize = 12.sp,
-                                                color = GrayMuted
-                                            )
+
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            val badgeBg = when (contact.status.lowercase()) {
+                                                "accepted" -> Color(0xFF22C55E).copy(alpha = 0.15f)
+                                                "pending" -> Color(0xFFF59E0B).copy(alpha = 0.15f)
+                                                else -> Color(0xFFEF4444).copy(alpha = 0.15f)
+                                            }
+                                            val badgeFg = when (contact.status.lowercase()) {
+                                                "accepted" -> Color(0xFF22C55E)
+                                                "pending" -> Color(0xFFF59E0B)
+                                                else -> Color(0xFFEF4444)
+                                            }
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(badgeBg)
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = contact.status.uppercase(),
+                                                    fontSize = 9.sp,
+                                                    color = badgeFg,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+
+                                            Spacer(modifier = Modifier.width(10.dp))
+
+                                            IconButton(
+                                                onClick = {
+                                                    scope.launch {
+                                                        try {
+                                                            val api = ApiClient.getApiService(context)
+                                                            val response = api.revokeEmergencyContact(contact.publicContactId)
+                                                            if (response.isSuccessful) {
+                                                                    Toast.makeText(context, "Contacto SOS eliminado", Toast.LENGTH_SHORT).show()
+                                                                    refreshContacts()
+                                                            }
+                                                        } catch (e: Exception) {
+                                                            Toast.makeText(context, "Error al eliminar contacto", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    }
+                                                }
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Delete,
+                                                    contentDescription = "Eliminar",
+                                                    tint = Color(0xFFEF4444)
+                                                )
+                                            }
                                         }
                                     }
 
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .background(
-                                                    if (contact.esPrincipal) Color(0xFF22C55E).copy(alpha = 0.15f)
-                                                    else Color(0xFF64748B).copy(alpha = 0.15f)
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .background(if (contact.isPrimary) Color(0xFF22C55E).copy(alpha = 0.15f) else Color(0xFF64748B).copy(alpha = 0.15f))
+                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                            ) {
+                                                Text(
+                                                    text = if (contact.isPrimary) "Prioridad: Principal" else "Prioridad: Secundario",
+                                                    fontSize = 10.sp,
+                                                    color = if (contact.isPrimary) Color(0xFF22C55E) else Color(0xFF94A3B8),
+                                                    fontWeight = FontWeight.Bold
                                                 )
-                                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                                        ) {
-                                            Text(
-                                                text = if (contact.esPrincipal) "Principal" else "Secundario",
-                                                fontSize = 11.sp,
-                                                color = if (contact.esPrincipal) Color(0xFF22C55E) else Color(0xFF94A3B8),
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        IconButton(
-                                            onClick = {
-                                                scope.launch {
-                                                    try {
-                                                        val api = ApiClient.getApiService(context)
-                                                        val response = api.deleteContact(contact.id)
-                                                        if (response.isSuccessful) {
-                                                            Toast.makeText(context, "Contacto SOS eliminado", Toast.LENGTH_SHORT).show()
-                                                            refreshContacts()
-                                                        }
-                                                    } catch (e: Exception) {
-                                                        Toast.makeText(context, "Error al eliminar contacto", Toast.LENGTH_SHORT).show()
-                                                    }
-                                                }
                                             }
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Delete,
-                                                contentDescription = "Eliminar",
-                                                tint = Color(0xFFEF4444)
+                                        }
+
+                                        if (!contact.isPrimary && contact.status.lowercase() == "accepted") {
+                                            Text(
+                                                text = "Hacer Principal",
+                                                color = TealPrimary,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier
+                                                    .clickable {
+                                                        scope.launch {
+                                                            try {
+                                                                val api = ApiClient.getApiService(context)
+                                                                val response = api.makeEmergencyContactPrimary(contact.publicContactId)
+                                                                if (response.isSuccessful) {
+                                                                    Toast.makeText(context, "Contacto marcado como principal", Toast.LENGTH_SHORT).show()
+                                                                    refreshContacts()
+                                                                }
+                                                            } catch (e: Exception) {
+                                                                Toast.makeText(context, "Error al actualizar contacto", Toast.LENGTH_SHORT).show()
+                                                            }
+                                                        }
+                                                    }
+                                                    .padding(6.dp)
                                             )
                                         }
                                     }
@@ -739,7 +871,7 @@ fun ContactsScreen(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Text(
-                    text = "AÑADIR NUEVO CONTACTO SOS",
+                    text = "INVITAR A CONTACTO SOS",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = GrayMuted,
@@ -749,9 +881,9 @@ fun ContactsScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedTextField(
-                    value = newContactName,
-                    onValueChange = { newContactName = it },
-                    label = { Text("Nombre del Contacto") },
+                    value = contactInviteUsernameInput,
+                    onValueChange = { contactInviteUsernameInput = it },
+                    label = { Text("Usuario o correo a invitar") },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -764,9 +896,9 @@ fun ContactsScreen(
                 )
 
                 OutlinedTextField(
-                    value = newContactPhone,
-                    onValueChange = { newContactPhone = it },
-                    label = { Text("Teléfono de contacto") },
+                    value = contactInviteRelationshipInput,
+                    onValueChange = { contactInviteRelationshipInput = it },
+                    label = { Text("Parentesco (ej. Padre, Amigo)") },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -778,36 +910,60 @@ fun ContactsScreen(
                     singleLine = true
                 )
 
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = contactInviteMakePrimary,
+                        onCheckedChange = { contactInviteMakePrimary = it },
+                        colors = CheckboxDefaults.colors(checkedColor = TealPrimary)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Hacer contacto principal al aceptar", color = Color.White, fontSize = 12.sp)
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Button(
                     onClick = {
-                        if (newContactName.isNotBlank() && newContactPhone.isNotBlank()) {
-                            if (isSavingContact) return@Button
-                            isSavingContact = true
-                            scope.launch {
-                                try {
-                                    val api = ApiClient.getApiService(context)
-                                    val response = api.createContact(
-                                        CreateContactoRequest(
-                                            nombre = newContactName.trim(),
-                                            telefono = newContactPhone.trim(),
-                                            parentesco = "Contacto",
-                                            priority = if (contactsList.isEmpty()) "Principal" else "Secundario",
-                                            esPrincipal = contactsList.isEmpty()
-                                        )
+                        if (contactInviteUsernameInput.isBlank()) {
+                            Toast.makeText(context, "Ingresa el nombre de usuario o correo", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        if (isSavingContact) return@Button
+                        isSavingContact = true
+                        
+                        val isEmail = contactInviteUsernameInput.contains("@")
+                        scope.launch {
+                            try {
+                                val api = ApiClient.getApiService(context)
+                                val response = api.createEmergencyContactInvitation(
+                                    CreateEmergencyContactInvitationRequest(
+                                        username = if (isEmail) null else contactInviteUsernameInput.trim(),
+                                        email = if (isEmail) contactInviteUsernameInput.trim() else null,
+                                        publicProfileId = null,
+                                        relationship = contactInviteRelationshipInput.trim().ifEmpty { "Familiar" },
+                                        priority = if (contactInviteMakePrimary) "Primary" else "Secondary",
+                                        makePrimaryWhenAccepted = contactInviteMakePrimary
                                     )
-                                    if (response.isSuccessful) {
-                                        Toast.makeText(context, "Contacto SOS guardado", Toast.LENGTH_SHORT).show()
-                                        newContactName = ""
-                                        newContactPhone = ""
-                                        refreshContacts()
-                                    }
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "Error de red al guardar contacto", Toast.LENGTH_SHORT).show()
-                                } finally {
-                                    isSavingContact = false
+                                )
+                                if (response.isSuccessful) {
+                                    val manualCode = response.body()?.manualCode ?: ""
+                                    contactInviteUsernameInput = ""
+                                    contactInviteRelationshipInput = ""
+                                    contactInviteMakePrimary = false
+                                    refreshContacts()
+                                    showContactInvitationCodeDialog = manualCode
+                                } else {
+                                    Toast.makeText(context, "Usuario no encontrado o ya invitado", Toast.LENGTH_SHORT).show()
                                 }
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Error de red al invitar contacto", Toast.LENGTH_SHORT).show()
+                            } finally {
+                                isSavingContact = false
                             }
                         }
                     },
@@ -818,7 +974,7 @@ fun ContactsScreen(
                     if (isSavingContact) {
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
                     } else {
-                        Text("Guardar Contacto SOS", fontWeight = FontWeight.Bold)
+                        Text("Crear Invitación SOS", fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -852,8 +1008,10 @@ fun ContactsScreen(
                             text = code,
                             color = TealPrimary,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp
+                            fontSize = 18.sp,
+                            modifier = Modifier.weight(1f)
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "COPIAR",
                             color = TealPrimary,
@@ -874,6 +1032,66 @@ fun ContactsScreen(
             confirmButton = {
                 Button(
                     onClick = { showInvitationCodeDialog = null },
+                    colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
+                ) {
+                    Text("Cerrar", color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF0C1929)
+        )
+    }
+
+    // --- SOS Contact Invitation Manual Code Dialog ---
+    if (showContactInvitationCodeDialog != null) {
+        val code = showContactInvitationCodeDialog!!
+        AlertDialog(
+            onDismissRequest = { showContactInvitationCodeDialog = null },
+            title = { Text("Código de Invitación SOS", color = Color.White) },
+            text = {
+                Column {
+                    Text(
+                        text = "El código se mostrará una sola vez. Compártelo con tu contacto de emergencia.",
+                        color = GrayMuted,
+                        fontSize = 13.sp
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF102238))
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = code,
+                            color = TealPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "COPIAR",
+                            color = TealPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            modifier = Modifier
+                                .clickable {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    val clip = ClipData.newPlainText("ImpactX SOS Manual Code", code)
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, "Código copiado", Toast.LENGTH_SHORT).show()
+                                }
+                                .padding(8.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showContactInvitationCodeDialog = null },
                     colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
                 ) {
                     Text("Cerrar", color = Color.White)
