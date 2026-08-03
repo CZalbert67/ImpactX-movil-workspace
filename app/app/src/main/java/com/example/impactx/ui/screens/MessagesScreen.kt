@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -167,8 +168,7 @@ fun MessagesScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
+                .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Top Bar
@@ -273,102 +273,8 @@ fun MessagesScreen(
                     }
                 }
             }
-
+            
             Spacer(modifier = Modifier.height(16.dp))
-
-            // --- TEMPLATE SELECTOR AND SEND BUTTON ---
-            Text(
-                text = "Mensaje rápido",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = GrayMuted,
-                modifier = Modifier.align(Alignment.Start),
-                letterSpacing = 1.sp
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Box(modifier = Modifier.weight(1f)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF102238))
-                            .clickable { showTemplatesOverlay = true }
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = selectedTemplate?.let { temp ->
-                                "${if (temp.isSystem) "Oficial" else "Personal"}: ${temp.text}"
-                            } ?: "Selecciona plantilla...",
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            maxLines = 1
-                        )
-                        Icon(imageVector = Icons.Default.ArrowDropDown, contentDescription = null, tint = TealPrimary)
-                    }
-                }
-
-                Button(
-                    onClick = {
-                        val rel = selectedRelation
-                        val temp = selectedTemplate
-                        if (rel == null || temp == null) {
-                            Toast.makeText(context, "Elige destinatario y plantilla", Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
-                        
-                        val otherProfileId = if (rel.monitorPublicProfileId == myProfileId) {
-                            rel.monitoredPublicProfileId
-                        } else {
-                            rel.monitorPublicProfileId
-                        }
-
-                        if (otherProfileId == null) return@Button
-
-                        isSendingMessage = true
-                        scope.launch {
-                            try {
-                                val api = ApiClient.getApiService(context)
-                                val response = api.sendQuickMessage(
-                                    SendQuickMessageRequest(
-                                        recipientPublicProfileId = otherProfileId,
-                                        publicTemplateId = temp.publicTemplateId
-                                    )
-                                )
-                                if (response.isSuccessful) {
-                                    Toast.makeText(context, "Mensaje enviado 🚀", Toast.LENGTH_SHORT).show()
-                                    refreshHistory(otherProfileId)
-                                } else {
-                                    Toast.makeText(context, "Error al enviar: ${response.code()}", Toast.LENGTH_SHORT).show()
-                                }
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "Error de red", Toast.LENGTH_SHORT).show()
-                            } finally {
-                                isSendingMessage = false
-                            }
-                        }
-                    },
-                    enabled = selectedRelation != null && selectedTemplate != null && !isSendingMessage,
-                    modifier = Modifier.height(48.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
-                ) {
-                    if (isSendingMessage) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
-                    } else {
-                        Text("Enviar", fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
 
             // --- CHAT HISTORY SECTION ---
             Text(
@@ -384,7 +290,7 @@ fun MessagesScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(240.dp),
+                    .weight(1f),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF0C1929)),
                 border = BorderStroke(1.dp, Color(0xFF102238))
@@ -485,14 +391,14 @@ fun MessagesScreen(
                                         }
                                         
                                         Row(
-                                            modifier = Modifier.align(Alignment.End),
+                                            modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.End,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
                                                 text = timeStr,
-                                                fontSize = 9.sp,
-                                                color = Color.White.copy(alpha = 0.6f)
+                                                fontSize = 10.sp,
+                                                color = Color.White.copy(alpha = 0.5f)
                                             )
                                             if (isOutgoing) {
                                                 Spacer(modifier = Modifier.width(4.dp))
@@ -541,6 +447,105 @@ fun MessagesScreen(
                 }
             }
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // --- TEMPLATE SELECTOR AND SEND BUTTON ---
+            Text(
+                text = "Mensaje rápido",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = GrayMuted,
+                modifier = Modifier.align(Alignment.Start),
+                letterSpacing = 1.sp
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF102238))
+                            .clickable { showTemplatesOverlay = true }
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = selectedTemplate?.let { temp ->
+                                "${if (temp.isSystem) "Oficial" else "Personal"}: ${temp.text}"
+                            } ?: "Selecciona plantilla...",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            maxLines = 1
+                        )
+                        Icon(imageVector = Icons.Default.ArrowDropDown, contentDescription = null, tint = TealPrimary)
+                    }
+                }
+
+                IconButton(
+                    onClick = {
+                        val rel = selectedRelation
+                        val temp = selectedTemplate
+                        if (rel == null || temp == null) {
+                            Toast.makeText(context, "Elige destinatario y plantilla", Toast.LENGTH_SHORT).show()
+                            return@IconButton
+                        }
+                        
+                        val otherProfileId = if (rel.monitorPublicProfileId == myProfileId) {
+                            rel.monitoredPublicProfileId
+                        } else {
+                            rel.monitorPublicProfileId
+                        }
+
+                        if (otherProfileId == null) return@IconButton
+
+                        isSendingMessage = true
+                        scope.launch {
+                            try {
+                                val api = ApiClient.getApiService(context)
+                                val response = api.sendQuickMessage(
+                                    SendQuickMessageRequest(
+                                        recipientPublicProfileId = otherProfileId,
+                                        publicTemplateId = temp.publicTemplateId
+                                    )
+                                )
+                                if (response.isSuccessful) {
+                                    Toast.makeText(context, "Mensaje enviado 🚀", Toast.LENGTH_SHORT).show()
+                                    refreshHistory(otherProfileId)
+                                } else {
+                                    Toast.makeText(context, "Error al enviar: ${response.code()}", Toast.LENGTH_SHORT).show()
+                                }
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Error de red", Toast.LENGTH_SHORT).show()
+                            } finally {
+                                isSendingMessage = false
+                            }
+                        }
+                    },
+                    enabled = selectedRelation != null && selectedTemplate != null && !isSendingMessage,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(if (selectedRelation != null && selectedTemplate != null && !isSendingMessage) TealPrimary else Color(0xFF102238))
+                ) {
+                    if (isSendingMessage) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Send,
+                            contentDescription = "Enviar",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
         }
     }
 
