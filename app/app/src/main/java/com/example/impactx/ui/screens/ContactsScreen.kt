@@ -310,61 +310,32 @@ fun ContactsScreen(
                         
                         Spacer(modifier = Modifier.height(12.dp))
                         
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Button(
-                                onClick = {
-                                    if (manualCodeInput.isBlank()) return@Button
-                                    scope.launch {
-                                        try {
-                                            val api = ApiClient.getApiService(context)
-                                            val response = api.acceptMonitoringInvitation(
-                                                AcceptMonitoringInvitationRequest(code = manualCodeInput.trim().uppercase())
-                                            )
-                                            if (response.isSuccessful) {
-                                                Toast.makeText(context, "Invitación aceptada con éxito!", Toast.LENGTH_SHORT).show()
-                                                manualCodeInput = ""
-                                                refreshMonitors()
-                                            } else {
-                                                Toast.makeText(context, "Código inválido o expirado", Toast.LENGTH_SHORT).show()
-                                            }
-                                        } catch (e: Exception) {
-                                            Toast.makeText(context, "Error de red", Toast.LENGTH_SHORT).show()
+                        Button(
+                            onClick = {
+                                if (manualCodeInput.isBlank()) return@Button
+                                scope.launch {
+                                    try {
+                                        val api = ApiClient.getApiService(context)
+                                        val response = api.acceptMonitoringInvitation(
+                                            AcceptMonitoringInvitationRequest(code = manualCodeInput.trim().uppercase())
+                                        )
+                                        if (response.isSuccessful) {
+                                            Toast.makeText(context, "Invitación aceptada con éxito!", Toast.LENGTH_SHORT).show()
+                                            manualCodeInput = ""
+                                            refreshMonitors()
+                                        } else {
+                                            Toast.makeText(context, "Código inválido o expirado", Toast.LENGTH_SHORT).show()
                                         }
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Error de red", Toast.LENGTH_SHORT).show()
                                     }
-                                },
-                                modifier = Modifier.weight(1f).height(44.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
-                            ) {
-                                Text("Aceptar", fontWeight = FontWeight.Bold)
-                            }
-                            
-                            OutlinedButton(
-                                onClick = {
-                                    if (manualCodeInput.isBlank()) return@OutlinedButton
-                                    scope.launch {
-                                        try {
-                                            val api = ApiClient.getApiService(context)
-                                            val response = api.rejectMonitoringInvitation(
-                                                RespondMonitoringInvitationRequest(code = manualCodeInput.trim().uppercase())
-                                            )
-                                            if (response.isSuccessful) {
-                                                Toast.makeText(context, "Invitación rechazada", Toast.LENGTH_SHORT).show()
-                                                manualCodeInput = ""
-                                                refreshMonitors()
-                                            }
-                                        } catch (e: Exception) {
-                                            Toast.makeText(context, "Error de red", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                },
-                                modifier = Modifier.weight(1f).height(44.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                                border = BorderStroke(1.dp, GrayMuted)
-                            ) {
-                                Text("Rechazar", fontWeight = FontWeight.Bold)
-                            }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
+                        ) {
+                            Text("Aceptar Invitación", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                         }
                     }
                 }
