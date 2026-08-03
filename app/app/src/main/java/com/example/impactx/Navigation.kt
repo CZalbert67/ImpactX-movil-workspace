@@ -67,7 +67,10 @@ fun MainNavigation() {
         entry<Login> {
           LoginScreen(
             onNavigateBack = { backStack.removeLastOrNull() },
-            onLoginSuccess = { backStack.add(Home) },
+            onLoginSuccess = { loggedInName ->
+              userName = loggedInName
+              backStack.add(Home)
+            },
             onNavigateToRegister = { backStack.add(Register) }
           )
         }

@@ -28,7 +28,7 @@ import kotlinx.coroutines.Dispatchers
 @Composable
 fun LoginScreen(
     onNavigateBack: () -> Unit,
-    onLoginSuccess: () -> Unit,
+    onLoginSuccess: (String) -> Unit,
     onNavigateToRegister: () -> Unit
 ) {
     val context = LocalContext.current
@@ -160,7 +160,7 @@ fun LoginScreen(
                                     }
                                     
                                     isLoading = false
-                                    onLoginSuccess()
+                                    onLoginSuccess(userDto.username)
                                 } else {
                                     isLoading = false
                                     errorMessage = response.body()?.message ?: "Error de credenciales."
