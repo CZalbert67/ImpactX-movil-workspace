@@ -1,5 +1,6 @@
 package com.example.impactx.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,10 +15,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.impactx.data.remote.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -26,12 +29,12 @@ fun EmergencyChatScreen(
     onCloseChat: () -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
+
     var chatMessages by remember {
         mutableStateOf(
             listOf(
-                ChatMessage("sistema", "Alerta SOS activada. Transmitiendo geolocalización GPS y ficha médica en tiempo real..."),
-                ChatMessage("sistema", "Monitores de emergencia alertados: Omar Picazo, Nayeli Zepeda."),
-                ChatMessage("monitor", "¡Alberto! Recibí la alerta de colisión de ImpactX. ¿Estás bien? Contesta por favor.")
+                ChatMessage("sistema", "Alerta SOS activada. Transmitiendo geolocalización GPS y ficha médica en tiempo real...")
             )
         )
     }
@@ -42,6 +45,101 @@ fun EmergencyChatScreen(
         "¡Accidente! Envíen ambulancia 🚑",
         "Estoy atrapado, llamen al 911 🚨"
     )
+
+    // Trigger auto-SOS sending to all monitors fetched from API
+    LaunchedEffect(Unit) {
+        coroutineScope.launch {
+            try {
+                val api = ApiClient.getApiService(context)
+                
+                // 1. Get my profile info
+                val profileResponse = api.getProfileUsername()
+                if (!profileResponse.isSuccessful) {
+                    chatMessages = chatMessages + ChatMessage("sistema", "Error al consultar perfil. Reintentando...")
+                    return@launch
+                }
+                val myProfileId = profileResponse.body()?.publicProfileId ?: ""
+                
+                // 2. Get my active templates
+                val templatesResponse = api.getQuickMessageTemplates()
+                if (!templatesResponse.isSuccessful || templatesResponse.body().isNullOrEmpty()) {
+                    chatMessages = chatMessages + ChatMessage("sistema", "Error: No se encontraron plantillas de mensajes rápidos.")
+                    return@launch
+                }
+                val templates = templatesResponse.body()!!
+                
+                // Find emergency template containing 'ayuda', 'sos', or 'emergencia'
+                val sosTemplate = templates.find {
+                    val textLower = it.text.lowercase()
+                    textLower.contains("ayuda") || textLower.contains("sos") || textLower.contains("emergencia")
+                } ?: templates.first()
+                
+                // 3. Get my monitoring relationships
+                val relResponse = api.getMonitoringRelationships()
+                if (!relResponse.isSuccessful) {
+                    chatMessages = chatMessages + ChatMessage("sistema", "Error al obtener relaciones de monitoreo.")
+                    return@launch
+                }
+                
+                // Filter active accepted monitors where I am the one monitored
+                val acceptedMonitors = (relResponse.body() ?: emptyList()).filter {
+                    it.status.lowercase() == "accepted"
+                }
+                
+                if (acceptedMonitors.isEmpty()) {
+                    chatMessages = chatMessages + ChatMessage("sistema", "No tienes monitores activos configurados.")
+                    return@launch
+                }
+                
+                chatMessages = chatMessages + ChatMessage("sistema", "Despachando SOS automático a tus monitores...")
+                
+                acceptedMonitors.forEach { rel ->
+                    // Determine monitor public profile ID and username
+                    val monitorProfileId = if (rel.monitoredPublicProfileId == myProfileId) {
+                        rel.monitorPublicProfileId
+                    } else {
+                        rel.monitoredPublicProfileId
+                    }
+                    
+                    val monitorUsername = if (rel.monitoredPublicProfileId == myProfileId) {
+                        rel.monitorUsername
+                    } else {
+                        rel.monitoredUsername ?: "Usuario"
+                    }
+                    
+                    if (monitorProfileId != null) {
+                        try {
+                            val sendResponse = api.sendQuickMessage(
+                                SendQuickMessageRequest(
+                                    recipientPublicProfileId = monitorProfileId,
+                                    publicTemplateId = sosTemplate.publicTemplateId
+                                )
+                            )
+                            if (sendResponse.isSuccessful) {
+                                chatMessages = chatMessages + ChatMessage(
+                                    "sistema",
+                                    "SOS enviado correctamente a @$monitorUsername"
+                                )
+                            } else {
+                                chatMessages = chatMessages + ChatMessage(
+                                    "sistema",
+                                    "Fallo al enviar a @$monitorUsername (${sendResponse.code()})"
+                                )
+                            }
+                        } catch (e: Exception) {
+                            chatMessages = chatMessages + ChatMessage(
+                                "sistema",
+                                "Error al enviar a @$monitorUsername"
+                              )
+                        }
+                    }
+                }
+                
+            } catch (e: Exception) {
+                chatMessages = chatMessages + ChatMessage("sistema", "Error durante el despacho automático de alertas.")
+            }
+        }
+    }
 
     Box(
         modifier = Modifier

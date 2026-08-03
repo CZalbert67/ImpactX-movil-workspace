@@ -231,6 +231,7 @@ fun ContactsScreen(
                             modifier = Modifier.padding(vertical = 4.dp)
                         )
                         
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -245,23 +246,30 @@ fun ContactsScreen(
                                 text = if (myProfileId.isEmpty()) "Cargando código..." else myProfileId,
                                 color = TealPrimary,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp
+                                fontSize = 13.sp,
+                                modifier = Modifier.weight(1f)
                             )
+                            Spacer(modifier = Modifier.width(8.dp))
                             if (myProfileId.isNotEmpty()) {
-                                Text(
-                                    text = "COPIAR",
-                                    color = TealPrimary,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier
-                                        .clickable {
-                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                            val clip = ClipData.newPlainText("ImpactX Profile ID", myProfileId)
-                                            clipboard.setPrimaryClip(clip)
-                                            Toast.makeText(context, "Código copiado", Toast.LENGTH_SHORT).show()
-                                        }
-                                        .padding(4.dp)
-                                )
+                                Button(
+                                    onClick = {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        val clip = ClipData.newPlainText("ImpactX Profile ID", myProfileId)
+                                        clipboard.setPrimaryClip(clip)
+                                        Toast.makeText(context, "Código copiado", Toast.LENGTH_SHORT).show()
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    shape = RoundedCornerShape(6.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = TealPrimary),
+                                    modifier = Modifier.height(32.dp)
+                                ) {
+                                    Text(
+                                        text = "Copiar",
+                                        color = Color.White,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
                     }

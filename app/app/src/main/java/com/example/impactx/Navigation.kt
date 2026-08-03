@@ -96,23 +96,7 @@ fun MainNavigation() {
             onNavigateToPlans = { backStack.add(Plans) },
             onNavigateToWearableSync = { backStack.add(WearableSync) },
             onNavigateToMessages = { backStack.add(Messages) },
-            onLogout = { 
-              coroutineScope.launch {
-                val db = AppDatabase.getDatabase(context)
-                val session = withContext(Dispatchers.IO) { db.sessionDao().session }
-                if (session != null) {
-                  try {
-                    val apiService = ApiClient.getApiService(context)
-                    apiService.logout("Bearer ${session.accessToken}")
-                  } catch (e: Exception) {
-                    // Safe ignore network error on logout
-                  }
-                }
-                withContext(Dispatchers.IO) { db.sessionDao().clearSession() }
-                backStack.removeLastOrNull()
-                backStack.add(Welcome)
-              }
-            }
+            onNavigateToProfile = { backStack.add(Profile) }
           )
         }
         entry<Medical> {
@@ -162,6 +146,33 @@ fun MainNavigation() {
         entry<Messages> {
           MessagesScreen(
             onNavigateBack = { backStack.removeLastOrNull() }
+          )
+        }
+        entry<Profile> {
+          ProfileScreen(
+            userName = userName,
+            userId = userId,
+            currentPlan = activePlan,
+            onUserNameChange = { userName = it },
+            onNavigateBack = { backStack.removeLastOrNull() },
+            onLogout = {
+              coroutineScope.launch {
+                val db = AppDatabase.getDatabase(context)
+                val session = withContext(Dispatchers.IO) { db.sessionDao().session }
+                if (session != null) {
+                  try {
+                    val apiService = ApiClient.getApiService(context)
+                    apiService.logout("Bearer ${session.accessToken}")
+                  } catch (e: Exception) {
+                    // Safe ignore network error on logout
+                  }
+                }
+                withContext(Dispatchers.IO) { db.sessionDao().clearSession() }
+                backStack.removeLastOrNull() // remove Profile
+                backStack.removeLastOrNull() // remove Home
+                backStack.add(Welcome)
+              }
+            }
           )
         }
       },

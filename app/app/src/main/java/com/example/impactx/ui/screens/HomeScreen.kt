@@ -35,7 +35,7 @@ fun HomeScreen(
     onNavigateToPlans: () -> Unit,
     onNavigateToWearableSync: () -> Unit,
     onNavigateToMessages: () -> Unit,
-    onLogout: () -> Unit
+    onNavigateToProfile: () -> Unit
 ) {
     // Pulse animation for the active shield
     val infiniteTransition = rememberInfiniteTransition(label = "shieldPulse")
@@ -103,7 +103,7 @@ fun HomeScreen(
                             .size(48.dp)
                             .clip(CircleShape)
                             .background(TealPrimary)
-                            .clickable { onLogout() },
+                            .clickable { onNavigateToProfile() },
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
