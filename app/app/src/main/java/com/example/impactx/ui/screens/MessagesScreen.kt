@@ -51,6 +51,7 @@ fun MessagesScreen(
     var isLoadingHistory by remember { mutableStateOf(false) }
     var isLoadingTemplates by remember { mutableStateOf(true) }
     var isSendingMessage by remember { mutableStateOf(false) }
+    var myProfileId by remember { mutableStateOf("") }
     
     // UI dropdown states
     var isRecipientDropdownExpanded by remember { mutableStateOf(false) }
@@ -118,16 +119,27 @@ fun MessagesScreen(
 
     // Load initial data
     LaunchedEffect(Unit) {
+        scope.launch {
+            try {
+                val api = ApiClient.getApiService(context)
+                val response = api.getProfileUsername()
+                if (response.isSuccessful) {
+                    myProfileId = response.body()?.publicProfileId ?: ""
+                }
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
         refreshRelations()
         refreshTemplates()
     }
 
     // Trigger history refresh when relation changes
-    LaunchedEffect(selectedRelation) {
+    LaunchedEffect(selectedRelation, myProfileId) {
         val rel = selectedRelation
-        if (rel != null) {
+        if (rel != null && myProfileId.isNotEmpty()) {
             // Find which profile id to use for history (not mine)
-            val otherProfileId = if (rel.monitoredPublicProfileId != null && rel.monitoredUsername?.isNotEmpty() == true) {
+            val otherProfileId = if (rel.monitorPublicProfileId == myProfileId) {
                 rel.monitoredPublicProfileId
             } else {
                 rel.monitorPublicProfileId
@@ -333,7 +345,7 @@ fun MessagesScreen(
                             return@Button
                         }
                         
-                        val otherProfileId = if (rel.monitoredPublicProfileId != null && rel.monitoredUsername?.isNotEmpty() == true) {
+                        val otherProfileId = if (rel.monitorPublicProfileId == myProfileId) {
                             rel.monitoredPublicProfileId
                         } else {
                             rel.monitorPublicProfileId
