@@ -195,7 +195,7 @@ fun WearHomeScreen(
     val bgColor = when {
         isTripActive && gForce > 3.0f -> Color(0xFF1A0000)
         isTripActive -> Color(0xFF001520)
-        else -> Color.Black
+        else -> Color(0xFF06111F)
     }
 
     val statusColor = when {

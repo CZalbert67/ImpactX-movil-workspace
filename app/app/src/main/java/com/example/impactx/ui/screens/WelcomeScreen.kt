@@ -14,7 +14,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-val DarkBlue = Color(0xFF081A2E)
+val DarkBlue = Color(0xFF06111F)
 val TealPrimary = Color(0xFF00A6A6)
 val GrayMuted = Color(0xFF64748B)
 

@@ -81,11 +81,11 @@ class SensorService : Service(), SensorEventListener {
         }
         // Register Accelerometer (G-Force calculation)
         accelerometerSensor?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
         }
         // Register Gyroscope (Rollover/fall detection)
         gyroscopeSensor?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
         }
     }
 
@@ -128,8 +128,8 @@ class SensorService : Service(), SensorEventListener {
                     _maxGForce.value = magnitude
                 }
 
-                // Crash detection threshold (> 4.5G)
-                if (magnitude > 4.5f && !_impactDetected.value) {
+                // Crash detection threshold (> 8.0G) - reduced sensitivity to avoid false alarms
+                if (magnitude > 8.0f && !_impactDetected.value) {
                     triggerImpactAlert()
                 }
 
@@ -143,9 +143,9 @@ class SensorService : Service(), SensorEventListener {
                 val rollRate = event.values[0]
                 val pitchRate = event.values[1]
                 
-                // Check for fast rotation suggesting a rollover
+                // Check for fast rotation suggesting a rollover (> 30 rad/s threshold)
                 val rotationMagnitude = sqrt(rollRate*rollRate + pitchRate*pitchRate)
-                if (rotationMagnitude > 15.0f && !_impactDetected.value) { // 15 rad/s threshold
+                if (rotationMagnitude > 30.0f && !_impactDetected.value) { 
                     triggerImpactAlert()
                 }
             }

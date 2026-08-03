@@ -34,7 +34,7 @@ fun WearAlertScreen(
     val infiniteTransition = rememberInfiniteTransition(label = "blink")
     val blinkColor by infiniteTransition.animateColor(
         initialValue = Color(0xFFD32F2F), // Red
-        targetValue = Color(0xFF37474F),  // Dark Grey
+        targetValue = Color(0xFF06111F),  // Dark background
         animationSpec = infiniteRepeatable(
             animation = tween(400, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse
