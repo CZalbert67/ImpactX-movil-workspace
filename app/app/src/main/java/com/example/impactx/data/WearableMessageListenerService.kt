@@ -1,7 +1,6 @@
 package com.example.impactx.data
 
 import android.util.Log
-import com.example.impactx.data.remote.AlertModels
 import com.example.impactx.data.remote.ApiClient
 import com.example.impactx.data.remote.SosRequest
 import com.example.impactx.data.remote.StartTripRequest
