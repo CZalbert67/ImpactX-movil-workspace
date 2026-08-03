@@ -26,6 +26,18 @@ fun MainNavigation() {
   val userId by remember { mutableStateOf("IX-9831-AZ") }
   val backStack = rememberNavBackStack(Splash)
 
+  // Watch for emergency navigation trigger from WearableMessageListenerService (crash detected)
+  val emergencyTrigger = WearableManager.triggerEmergencyNav
+  LaunchedEffect(emergencyTrigger) {
+    if (emergencyTrigger) {
+      WearableManager.triggerEmergencyNav = false
+      // Navigate to emergency chat if not already there
+      if (backStack.lastOrNull() !is EmergencyChat) {
+        backStack.add(EmergencyChat)
+      }
+    }
+  }
+
   NavDisplay(
     backStack = backStack,
     onBack = { backStack.removeLastOrNull() },

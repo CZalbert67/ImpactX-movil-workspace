@@ -16,7 +16,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,6 +32,7 @@ class MainActivity : ComponentActivity() {
     private var sensorService by mutableStateOf<SensorService?>(null)
     private var isServiceRunning by mutableStateOf(false)
     private var isBound by mutableStateOf(false)
+    private var isTripActive by mutableStateOf(false)
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -47,23 +47,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Permission request launcher
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val sensorsGranted = permissions[Manifest.permission.BODY_SENSORS] ?: false
         val activityGranted = permissions[Manifest.permission.ACTIVITY_RECOGNITION] ?: false
         if (sensorsGranted && activityGranted) {
-            Toast.makeText(this, "Permisos de sensores concedidos", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Permisos concedidos ✅", Toast.LENGTH_SHORT).show()
         } else {
-            Toast.makeText(this, "Se requieren permisos para monitorear incidentes", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Se requieren permisos para monitorear", Toast.LENGTH_LONG).show()
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
         checkAndRequestPermissions()
 
         setContent {
@@ -73,7 +71,7 @@ class MainActivity : ComponentActivity() {
                     color = Color.Black
                 ) {
                     val service = sensorService
-                    
+
                     if (isServiceRunning && service != null) {
                         val heartRate by service.heartRate.collectAsState()
                         val gForce by service.gForce.collectAsState()
@@ -81,10 +79,8 @@ class MainActivity : ComponentActivity() {
                         val isConnected by service.isConnected.collectAsState()
                         val impactDetected by service.impactDetected.collectAsState()
 
-                        // Alarm check from Intent
                         val triggerAlarmFromIntent = intent?.getBooleanExtra("TRIGGER_ALARM", false) ?: false
                         if (triggerAlarmFromIntent && !impactDetected) {
-                            // Trigger it locally if intent requested it
                             service.sendSignalToPhone("/impact-detected", "CRITICAL_IMPACT")
                         }
 
@@ -95,6 +91,7 @@ class MainActivity : ComponentActivity() {
                                     service.resetAlarm()
                                 },
                                 onTimeout = {
+                                    // SOS is auto-fired — send final confirmation
                                     service.sendSignalToPhone("/sos-triggered", "CRITICAL_SOS")
                                 }
                             )
@@ -105,20 +102,38 @@ class MainActivity : ComponentActivity() {
                                 gForce = gForce,
                                 maxGForce = maxGForce,
                                 isConnected = isConnected,
+                                isTripActive = isTripActive,
                                 onToggleService = { toggleMonitoringService() },
-                                onSimulateImpact = { service.sendSignalToPhone("/simulate-impact", "SIMULATE") }
+                                onSimulateImpact = {
+                                    // Send crash signal with current sensor data
+                                    val payload = """{"gForce":${gForce},"heartRate":${heartRate}}"""
+                                    service.sendSignalToPhone("/impact-detected", payload)
+                                },
+                                onStartTrip = {
+                                    // Signal the phone to start a trip (phone will capture GPS)
+                                    service.sendSignalToPhone("/start-trip", "START")
+                                    isTripActive = true
+                                    Toast.makeText(this, "🚗 Viaje iniciado", Toast.LENGTH_SHORT).show()
+                                },
+                                onFinishTrip = {
+                                    service.sendSignalToPhone("/finish-trip", "FINISH")
+                                    isTripActive = false
+                                    Toast.makeText(this, "🏁 Viaje finalizado", Toast.LENGTH_SHORT).show()
+                                }
                             )
                         }
                     } else {
-                        // Monitor not running or loading binding
                         WearHomeScreen(
                             isServiceRunning = false,
                             heartRate = 0,
                             gForce = 1.0f,
                             maxGForce = 1.0f,
                             isConnected = false,
+                            isTripActive = false,
                             onToggleService = { toggleMonitoringService() },
-                            onSimulateImpact = {}
+                            onSimulateImpact = {},
+                            onStartTrip = {},
+                            onFinishTrip = {}
                         )
                     }
                 }
@@ -134,13 +149,11 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }
-
-        val missingPermissions = permissions.filter {
+        val missing = permissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
-
-        if (missingPermissions.isNotEmpty()) {
-            requestPermissionLauncher.launch(missingPermissions.toTypedArray())
+        if (missing.isNotEmpty()) {
+            requestPermissionLauncher.launch(missing.toTypedArray())
         }
     }
 
@@ -154,6 +167,7 @@ class MainActivity : ComponentActivity() {
             stopService(intent)
             isServiceRunning = false
             sensorService = null
+            isTripActive = false
         } else {
             startForegroundService(intent)
             bindService(intent, connection, Context.BIND_AUTO_CREATE)

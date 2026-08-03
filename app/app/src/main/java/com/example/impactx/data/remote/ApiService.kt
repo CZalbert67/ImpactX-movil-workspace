@@ -37,4 +37,40 @@ interface ApiService {
     suspend fun createVehicle(
         @Body request: CreateVehicleRequest
     ): Response<VehicleDto>
+
+    // ---- Trips ----
+    @POST("api/v1/trips/start")
+    suspend fun startTrip(
+        @Body request: StartTripRequest
+    ): Response<ViajeDto>
+
+    @POST("api/v1/trips/{id}/finish")
+    suspend fun finishTrip(
+        @retrofit2.http.Path("id") tripId: String
+    ): Response<TripActionResponse>
+
+    @GET("api/v1/trips/active")
+    suspend fun getActiveTrip(): Response<ViajeDto>
+
+    // ---- Alerts / SOS ----
+    @POST("api/v1/alerts/sos")
+    suspend fun sendSos(
+        @Body request: SosRequest
+    ): Response<AlertStatusDto>
+
+    @POST("api/v1/alerts/detect")
+    suspend fun detectAlert(
+        @Body request: DetectAlertRequest
+    ): Response<AlertStatusDto>
+
+    // ---- Quick Messages / Chat ----
+    @POST("api/v1/quick-messages/send")
+    suspend fun sendQuickMessage(
+        @Body request: SendQuickMessageRequest
+    ): Response<QuickMessageDto>
+
+    @GET("api/v1/quick-messages/history")
+    suspend fun getMessageHistory(
+        @retrofit2.http.Query("otherPublicProfileId") otherPublicProfileId: String? = null
+    ): Response<List<QuickMessageDto>>
 }

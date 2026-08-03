@@ -113,4 +113,7 @@ dependencies {
 
   // Google Play Services Wearable
   implementation(libs.play.services.wearable)
+
+  // Google Play Services Location (GPS / FusedLocationProvider)
+  implementation("com.google.android.gms:play-services-location:21.3.0")
 }

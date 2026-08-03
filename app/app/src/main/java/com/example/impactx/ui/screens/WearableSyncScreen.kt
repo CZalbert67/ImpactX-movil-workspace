@@ -75,6 +75,10 @@ object WearableManager {
     var connectedDeviceName by mutableStateOf<String?>(null)
     var connectedDeviceAddress by mutableStateOf<String?>(null)
     var activeGatt: BluetoothGatt? = null
+    // Trip state managed from watch
+    var activeWearTripId by mutableStateOf<String?>(null)
+    var lastCrashAlertId by mutableStateOf<String?>(null)
+    var triggerEmergencyNav by mutableStateOf(false) // flag to navigate to chat
 }
 
 data class BLEDeviceItem(
