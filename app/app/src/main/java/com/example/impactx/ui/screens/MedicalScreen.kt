@@ -15,16 +15,46 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
+import com.example.impactx.data.remote.ApiClient
+import com.example.impactx.data.remote.UpdateMedicalProfileRequest
+import kotlinx.coroutines.launch
 
 @Composable
 fun MedicalScreen(
     onNavigateBack: () -> Unit
 ) {
-    var bloodType by remember { mutableStateOf("O+") }
-    var allergies by remember { mutableStateOf("Ninguna conocida") }
-    var conditions by remember { mutableStateOf("Ninguna") }
-    var medications by remember { mutableStateOf("Ninguno") }
-    var notes by remember { mutableStateOf("Contacto en caso de emergencia adicional: mamá.") }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var bloodType by remember { mutableStateOf("") }
+    var allergies by remember { mutableStateOf("") }
+    var conditions by remember { mutableStateOf("") }
+    var medications by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
+    
+    var isLoading by remember { mutableStateOf(true) }
+    var isSaving by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        try {
+            val api = ApiClient.getApiService(context)
+            val response = api.getMedicalProfile()
+            if (response.isSuccessful) {
+                val profile = response.body()
+                bloodType = profile?.tipoSangre ?: ""
+                allergies = profile?.alergias ?: ""
+                conditions = profile?.condiciones ?: ""
+                medications = profile?.medicamentos ?: ""
+                notes = profile?.nota ?: ""
+            }
+        } catch (e: Exception) {
+            Toast.makeText(context, "Error al cargar ficha médica", Toast.LENGTH_SHORT).show()
+        } finally {
+            isLoading = false
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -152,7 +182,34 @@ fun MedicalScreen(
 
             // Save Button
             Button(
-                onClick = { onNavigateBack() },
+                onClick = {
+                    if (isSaving) return@Button
+                    isSaving = true
+                    scope.launch {
+                        try {
+                            val api = ApiClient.getApiService(context)
+                            val response = api.updateMedicalProfile(
+                                UpdateMedicalProfileRequest(
+                                    tipoSangre = bloodType.trim(),
+                                    alergias = allergies.trim(),
+                                    condiciones = conditions.trim(),
+                                    medicamentos = medications.trim(),
+                                    nota = notes.trim()
+                                )
+                            )
+                            if (response.isSuccessful) {
+                                Toast.makeText(context, "Ficha médica guardada ✅", Toast.LENGTH_SHORT).show()
+                                onNavigateBack()
+                            } else {
+                                Toast.makeText(context, "Error al guardar ficha: ${response.code()}", Toast.LENGTH_SHORT).show()
+                            }
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Error de red al guardar ficha", Toast.LENGTH_SHORT).show()
+                        } finally {
+                            isSaving = false
+                        }
+                    }
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
@@ -162,7 +219,11 @@ fun MedicalScreen(
                     contentColor = Color.White
                 )
             ) {
-                Text("Guardar Ficha Médica", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                if (isSaving || isLoading) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                } else {
+                    Text("Guardar Ficha Médica", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }

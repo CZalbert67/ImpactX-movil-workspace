@@ -19,6 +19,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import com.example.impactx.data.remote.ApiClient
 
 @Composable
 fun PlansScreen(
@@ -26,8 +28,31 @@ fun PlansScreen(
     onNavigateBack: () -> Unit,
     onPlanSelected: (String) -> Unit
 ) {
+    val context = LocalContext.current
+    var freePrice by remember { mutableStateOf("0") }
+    var basicPrice by remember { mutableStateOf("99") }
+    var premiumPrice by remember { mutableStateOf("199") }
     var showSuccessDialog by remember { mutableStateOf(false) }
     var selectedPlanForPurchase by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        try {
+            val api = ApiClient.getApiService(context)
+            val response = api.getPlans()
+            if (response.isSuccessful) {
+                val plans = response.body() ?: emptyList()
+                plans.forEach { plan ->
+                    when (plan.nombre.lowercase()) {
+                        "free" -> freePrice = plan.precioMensual.toInt().toString()
+                        "basic" -> basicPrice = plan.precioMensual.toInt().toString()
+                        "premium" -> premiumPrice = plan.precioMensual.toInt().toString()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // keep fallback defaults on error
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -82,10 +107,10 @@ fun PlansScreen(
             // Plan 1: Básico
             PlanCard(
                 name = "Básico",
-                price = "$0 MXN",
+                price = "$$freePrice MXN",
                 period = "/ siempre gratis",
                 features = listOf(
-                    "✓ 1 Vehículo registrado",
+                    "✓ 3 Contactos de emergencia",
                     "✓ 1 Monitor de emergencia",
                     "✓ Monitoreo de velocidad básico",
                     "✗ Mini-mapa en tiempo real",
@@ -104,15 +129,15 @@ fun PlansScreen(
             // Plan 2: Premium (Recommended)
             PlanCard(
                 name = "Premium",
-                price = "$199 MXN",
+                price = "$$basicPrice MXN",
                 period = "/ mes",
                 features = listOf(
-                    "✓ Hasta 3 Vehículos registrados",
+                    "✓ Hasta 10 Contactos de emergencia",
                     "✓ Hasta 3 Monitores de emergencia",
                     "✓ Mini-mapa en tiempo real (glowing map)",
                     "✓ Botón de pánico SOS",
                     "✓ Chat automático en caso de choque",
-                    "✓ Soporte de telemetría por fuerza G"
+                    "✓ Soporte de telemetría por G-Force"
                 ),
                 isActive = currentPlan == "Premium",
                 isRecommended = true,
@@ -128,10 +153,10 @@ fun PlansScreen(
             // Plan 3: Familiar Guardián
             PlanCard(
                 name = "Familiar Guardián",
-                price = "$349 MXN",
+                price = "$$premiumPrice MXN",
                 period = "/ mes",
                 features = listOf(
-                    "✓ Vehículos registrados ILIMITADOS",
+                    "✓ Contactos de emergencia ILIMITADOS",
                     "✓ Monitores de emergencia ILIMITADOS",
                     "✓ Mini-mapa en tiempo real (glowing map)",
                     "✓ Botón de pánico SOS",
@@ -140,7 +165,7 @@ fun PlansScreen(
                     "✓ Soporte prioritario 24/7"
                 ),
                 isActive = currentPlan == "Familiar Guardián",
-                buttonText = "Adquirir Guardián",
+                buttonText = "Adquirir Familiar",
                 onSelect = {
                     selectedPlanForPurchase = "Familiar Guardián"
                     showSuccessDialog = true

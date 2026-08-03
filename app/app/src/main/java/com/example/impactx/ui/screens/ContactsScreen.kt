@@ -19,6 +19,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import com.example.impactx.data.remote.ApiClient
+import com.example.impactx.data.remote.ContactoDto
+import com.example.impactx.data.remote.CreateContactoRequest
+import kotlinx.coroutines.launch
 
 @Composable
 fun ContactsScreen(
@@ -26,20 +34,40 @@ fun ContactsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToPlans: () -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     val maxContacts = when (currentPlan) {
-        "Básico" -> 1
-        "Premium" -> 3
+        "Básico" -> 3
+        "Premium" -> 10
         else -> 999 // Unlimited
     }
 
     var newContactName by remember { mutableStateOf("") }
     var newContactPhone by remember { mutableStateOf("") }
-    var contactsList by remember {
-        mutableStateOf(
-            listOf(
-                Contact("Omar Picazo", "5512345678", "Activo")
-            )
-        )
+    var contactsList by remember { mutableStateOf<List<ContactoDto>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var isSaving by remember { mutableStateOf(false) }
+
+    fun refreshContacts() {
+        isLoading = true
+        scope.launch {
+            try {
+                val api = ApiClient.getApiService(context)
+                val response = api.getContacts()
+                if (response.isSuccessful) {
+                    contactsList = response.body() ?: emptyList()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error de red al cargar contactos", Toast.LENGTH_SHORT).show()
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        refreshContacts()
     }
 
     val limitReached = contactsList.size >= maxContacts
@@ -131,71 +159,106 @@ fun ContactsScreen(
             Spacer(modifier = Modifier.height(20.dp))
 
             // Contacts List
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                contactsList.forEach { contact ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFF102238).copy(alpha = 0.5f)
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+            if (isLoading) {
+                CircularProgressIndicator(color = TealPrimary, modifier = Modifier.padding(24.dp))
+            } else if (contactsList.isEmpty()) {
+                Text(
+                    text = "Aún no tienes monitores registrados.",
+                    color = GrayMuted,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(vertical = 16.dp)
+                )
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    contactsList.forEach { contact ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = Color(0xFF102238).copy(alpha = 0.5f)
+                            )
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
-                                        .background(TealPrimary.copy(alpha = 0.2f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = contact.name.take(2).uppercase(),
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TealPrimary
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text(
-                                        text = contact.name,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White
-                                    )
-                                    Text(
-                                        text = contact.phone,
-                                        fontSize = 12.sp,
-                                        color = GrayMuted
-                                    )
-                                }
-                            }
-                            
-                            val isPending = contact.status.contains("pendiente")
-                            Box(
+                            Row(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(
-                                        if (isPending) Color(0xFFF59E0B).copy(alpha = 0.15f)
-                                        else Color(0xFF22C55E).copy(alpha = 0.15f)
-                                    )
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = contact.status,
-                                    fontSize = 11.sp,
-                                    color = if (isPending) Color(0xFFF59E0B) else Color(0xFF22C55E),
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .background(TealPrimary.copy(alpha = 0.2f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = contact.nombre.take(2).uppercase(),
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TealPrimary
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            text = contact.nombre,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                        Text(
+                                            text = contact.telefono,
+                                            fontSize = 12.sp,
+                                            color = GrayMuted
+                                        )
+                                    }
+                                }
+
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(
+                                                if (contact.esPrincipal) Color(0xFF22C55E).copy(alpha = 0.15f)
+                                                else Color(0xFF64748B).copy(alpha = 0.15f)
+                                            )
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = if (contact.esPrincipal) "Principal" else "Secundario",
+                                            fontSize = 11.sp,
+                                            color = if (contact.esPrincipal) Color(0xFF22C55E) else Color(0xFF94A3B8),
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    IconButton(
+                                        onClick = {
+                                            scope.launch {
+                                                try {
+                                                    val api = ApiClient.getApiService(context)
+                                                    val response = api.deleteContact(contact.id)
+                                                    if (response.isSuccessful) {
+                                                        Toast.makeText(context, "Monitor eliminado", Toast.LENGTH_SHORT).show()
+                                                        refreshContacts()
+                                                    }
+                                                } catch (e: Exception) {
+                                                    Toast.makeText(context, "Error al eliminar monitor", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Eliminar",
+                                            tint = Color(0xFFEF4444)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -283,9 +346,34 @@ fun ContactsScreen(
                 Button(
                     onClick = {
                         if (newContactName.isNotBlank() && newContactPhone.isNotBlank()) {
-                            contactsList = contactsList + Contact(newContactName, newContactPhone, "Invitación pendiente")
-                            newContactName = ""
-                            newContactPhone = ""
+                            if (isSaving) return@Button
+                            isSaving = true
+                            scope.launch {
+                                try {
+                                    val api = ApiClient.getApiService(context)
+                                    val response = api.createContact(
+                                        CreateContactoRequest(
+                                            nombre = newContactName.trim(),
+                                            telefono = newContactPhone.trim(),
+                                            parentesco = "Amigo",
+                                            priority = if (contactsList.isEmpty()) "Principal" else "Secundario",
+                                            esPrincipal = contactsList.isEmpty()
+                                        )
+                                    )
+                                    if (response.isSuccessful) {
+                                        Toast.makeText(context, "Invitación enviada", Toast.LENGTH_SHORT).show()
+                                        newContactName = ""
+                                        newContactPhone = ""
+                                        refreshContacts()
+                                    } else {
+                                        Toast.makeText(context, "Error al invitar: ${response.code()}", Toast.LENGTH_SHORT).show()
+                                    }
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Error de red al enviar invitación", Toast.LENGTH_SHORT).show()
+                                } finally {
+                                    isSaving = false
+                                }
+                            }
                         }
                     },
                     modifier = Modifier
@@ -297,11 +385,13 @@ fun ContactsScreen(
                         contentColor = Color.White
                     )
                 ) {
-                    Text("Enviar Invitación", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    if (isSaving) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                    } else {
+                        Text("Enviar Invitación", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
     }
 }
-
-data class Contact(val name: String, val phone: String, val status: String)

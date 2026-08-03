@@ -73,4 +73,45 @@ interface ApiService {
     suspend fun getMessageHistory(
         @retrofit2.http.Query("otherPublicProfileId") otherPublicProfileId: String? = null
     ): Response<List<QuickMessageDto>>
+
+    // ---- Plans ----
+    @GET("api/v1/plans")
+    suspend fun getPlans(): Response<List<PlanDto>>
+
+    // ---- Medical Profile ----
+    @GET("api/v1/profile/medical")
+    suspend fun getMedicalProfile(): Response<MedicalProfileDto>
+
+    @PUT("api/v1/profile/medical")
+    suspend fun updateMedicalProfile(
+        @Body request: UpdateMedicalProfileRequest
+    ): Response<MedicalProfileDto>
+
+    // ---- Contacts ----
+    @GET("api/v1/contacts")
+    suspend fun getContacts(): Response<List<ContactoDto>>
+
+    @POST("api/v1/contacts")
+    suspend fun createContact(
+        @Body request: CreateContactoRequest
+    ): Response<ContactoDto>
+
+    @DELETE("api/v1/contacts/{id}")
+    suspend fun deleteContact(
+        @retrofit2.http.Path("id") contactId: String
+    ): Response<Void>
+
+    // ---- Monitors ----
+    @GET("api/v1/monitors")
+    suspend fun getMonitors(): Response<List<MonitorDto>>
+
+    @POST("api/v1/monitors/invite")
+    suspend fun inviteMonitor(
+        @Body request: InviteMonitorRequest
+    ): Response<MonitorDto>
+
+    @DELETE("api/v1/monitors/{id}")
+    suspend fun revokeMonitor(
+        @retrofit2.http.Path("id") monitorId: String
+    ): Response<Void>
 }

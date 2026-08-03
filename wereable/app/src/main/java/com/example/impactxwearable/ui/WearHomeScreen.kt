@@ -349,17 +349,17 @@ fun WearHomeScreen(
                     colors = ButtonDefaults.buttonColors(
                         backgroundColor = if (isServiceRunning) Color(0xFF37474F) else Color(0xFF00BFA5)
                     ),
-                    modifier = Modifier.size(34.dp)
+                    modifier = Modifier.size(44.dp)
                 ) {
                     Icon(
                         imageVector = if (isServiceRunning) Icons.Default.Close else Icons.Default.PlayArrow,
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.width(6.dp))
+                Spacer(modifier = Modifier.width(8.dp))
 
                 // Trip button
                 if (isServiceRunning) {
@@ -368,15 +368,15 @@ fun WearHomeScreen(
                         colors = ButtonDefaults.buttonColors(
                             backgroundColor = if (isTripActive) Color(0xFF37474F) else Color(0xFF1565C0)
                         ),
-                        modifier = Modifier.size(34.dp)
+                        modifier = Modifier.size(44.dp)
                     ) {
                         Text(
                             text = if (isTripActive) "🏁" else "🚗",
-                            fontSize = 14.sp
+                            fontSize = 18.sp
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
 
                     // Simulate Impact button (only in trip mode)
                     Button(
@@ -385,9 +385,9 @@ fun WearHomeScreen(
                             backgroundColor = if (isTripActive) Color(0xFFB71C1C) else Color(0xFF263238)
                         ),
                         enabled = isTripActive,
-                        modifier = Modifier.size(34.dp)
+                        modifier = Modifier.size(44.dp)
                     ) {
-                        Text("⚡", fontSize = 13.sp)
+                        Text("⚡", fontSize = 16.sp)
                     }
                 }
             }
