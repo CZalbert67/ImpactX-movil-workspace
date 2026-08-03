@@ -84,6 +84,7 @@ fun RegisterScreen(
     var vehiclePlate by remember { mutableStateOf("") }
     var vehicleDropdownExpanded by remember { mutableStateOf(false) }
     var useDropdownExpanded by remember { mutableStateOf(false) }
+    var yearDropdownExpanded by remember { mutableStateOf(false) }
 
     // --- STEP 4 STATE: Medical Profile ---
     var bloodType by remember { mutableStateOf("Selecciona") }
@@ -199,7 +200,7 @@ fun RegisterScreen(
 
                     OutlinedTextField(
                         value = username,
-                        onValueChange = { username = it.trim().lowercase(); errorMessage = "" },
+                        onValueChange = { username = it; errorMessage = "" },
                         label = { Text("Nombre de usuario *") },
                         placeholder = { Text("tu_usuario") },
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -386,11 +387,22 @@ fun RegisterScreen(
                                     password.any { it.isUpperCase() } &&
                                     password.any { it.isLowerCase() } &&
                                     password.any { it.isDigit() }
+                            
+                            val usernamePattern = "^[a-z0-9_.]+$".toRegex()
+                            val phonePattern = "^[0-9]+$".toRegex()
 
                             if (name.isBlank() || username.isBlank() || email.isBlank() || phone.isBlank() || password.isBlank() || confirmPassword.isBlank()) {
                                 errorMessage = "Por favor completa todos los campos requeridos (*)."
+                            } else if (name.trim().length < 3) {
+                                errorMessage = "El nombre debe tener al menos 3 caracteres."
+                            } else if (!username.trim().matches(usernamePattern)) {
+                                errorMessage = "El nombre de usuario solo permite letras minúsculas, números, guion bajo (_) y punto (.)."
+                            } else if (username.trim().length < 3 || username.trim().length > 20) {
+                                errorMessage = "El nombre de usuario debe medir entre 3 y 20 caracteres."
                             } else if (!isEmailValid) {
                                 errorMessage = "El formato del correo electrónico no es válido."
+                            } else if (!phone.trim().matches(phonePattern) || phone.trim().length !in 8..15) {
+                                errorMessage = "El teléfono debe contener únicamente números y medir entre 8 y 15 dígitos."
                             } else if (password != confirmPassword) {
                                 errorMessage = "Las contraseñas ingresadas no coinciden."
                             } else if (!isPasswordValid) {
@@ -405,7 +417,7 @@ fun RegisterScreen(
                                         val api = ApiClient.getApiService(context)
                                         val response = api.register(
                                             RegisterRequest(
-                                                username = username.trim(),
+                                                username = username.trim().lowercase(),
                                                 correo = email.trim(),
                                                 password = password,
                                                 nombre = name.trim(),
@@ -751,21 +763,44 @@ fun RegisterScreen(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedTextField(
-                            value = vehicleYear,
-                            onValueChange = { vehicleYear = it; errorMessage = "" },
-                            label = { Text("Año *") },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = TealPrimary,
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                                focusedLabelColor = TealPrimary,
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White
-                            ),
-                            singleLine = true
-                        )
+                        // Year Dropdown Select (Calendario desglosado con años límites de 1980 a 2027)
+                        Box(modifier = Modifier.weight(1f)) {
+                            OutlinedTextField(
+                                value = vehicleYear,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Año *") },
+                                trailingIcon = {
+                                    IconButton(onClick = { yearDropdownExpanded = true }) {
+                                        Icon(Icons.Default.ArrowDropDown, contentDescription = "Expandir años")
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = TealPrimary,
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                                    focusedLabelColor = TealPrimary,
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White
+                                )
+                            )
+                            DropdownMenu(
+                                expanded = yearDropdownExpanded,
+                                onDismissRequest = { yearDropdownExpanded = false }
+                            ) {
+                                (2027 downTo 1980).forEach { y ->
+                                    DropdownMenuItem(
+                                        text = { Text(y.toString()) },
+                                        onClick = {
+                                            vehicleYear = y.toString()
+                                            yearDropdownExpanded = false
+                                            errorMessage = ""
+                                        }
+                                    )
+                                }
+                            }
+                        }
 
                         OutlinedTextField(
                             value = vehicleAvgSpeed,
@@ -787,7 +822,7 @@ fun RegisterScreen(
 
                     OutlinedTextField(
                         value = vehicleColor,
-                        onValueChange = { vehicleColor = it },
+                        onValueChange = { vehicleColor = it; errorMessage = "" },
                         label = { Text("Color") },
                         placeholder = { Text("Blanco, Negro, Gris...") },
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -804,7 +839,7 @@ fun RegisterScreen(
 
                     OutlinedTextField(
                         value = vehiclePlate,
-                        onValueChange = { vehiclePlate = it },
+                        onValueChange = { vehiclePlate = it; errorMessage = "" },
                         label = { Text("Placa") },
                         placeholder = { Text("ABC-123") },
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -837,7 +872,17 @@ fun RegisterScreen(
                             val speedVal = vehicleAvgSpeed.toDoubleOrNull()
 
                             if (vehicleBrand.isBlank() || vehicleModel.isBlank() || yearVal == null || speedVal == null) {
-                                errorMessage = "Marca, modelo, año y velocidad deben ser válidos."
+                                errorMessage = "Por favor completa todos los campos obligatorios (*) con valores correctos."
+                            } else if (vehicleBrand.trim().length < 2) {
+                                errorMessage = "La marca debe tener al menos 2 caracteres."
+                            } else if (vehicleModel.trim().length < 2) {
+                                errorMessage = "El modelo debe tener al menos 2 caracteres."
+                            } else if (speedVal < 10.0 || speedVal > 250.0) {
+                                errorMessage = "La velocidad promedio debe ser un número válido entre 10 y 250 km/h."
+                            } else if (vehiclePlate.isNotBlank() && vehiclePlate.trim().length !in 3..15) {
+                                errorMessage = "La placa del vehículo debe medir entre 3 y 15 caracteres."
+                            } else if (vehicleColor.isNotBlank() && vehicleColor.trim().length !in 3..20) {
+                                errorMessage = "El color del vehículo debe medir entre 3 y 20 caracteres."
                             } else {
                                 isLoading = true
                                 errorMessage = ""
@@ -856,9 +901,10 @@ fun RegisterScreen(
                                             )
                                         )
                                         if (response.isSuccessful) {
+                                            errorMessage = ""
                                             currentStep = 4
                                         } else {
-                                            errorMessage = "Error al guardar el vehículo."
+                                            errorMessage = "Error al guardar el vehículo. Comprueba tus datos."
                                         }
                                     } catch (e: Exception) {
                                         // Network error, skip to step 4 as option
@@ -954,7 +1000,7 @@ fun RegisterScreen(
 
                     OutlinedTextField(
                         value = allergies,
-                        onValueChange = { allergies = it },
+                        onValueChange = { allergies = it; errorMessage = "" },
                         label = { Text("Alergias") },
                         placeholder = { Text("Medicamentos, alimentos...") },
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -971,7 +1017,7 @@ fun RegisterScreen(
 
                     OutlinedTextField(
                         value = conditions,
-                        onValueChange = { conditions = it },
+                        onValueChange = { conditions = it; errorMessage = "" },
                         label = { Text("Condiciones o padecimientos") },
                         placeholder = { Text("Diabetes, hipertensión...") },
                         modifier = Modifier.fillMaxWidth().height(100.dp).padding(vertical = 4.dp),
@@ -988,7 +1034,7 @@ fun RegisterScreen(
 
                     OutlinedTextField(
                         value = medications,
-                        onValueChange = { medications = it },
+                        onValueChange = { medications = it; errorMessage = "" },
                         label = { Text("Medicamentos actuales") },
                         placeholder = { Text("Nombre y dosis, si aplica") },
                         modifier = Modifier.fillMaxWidth().height(100.dp).padding(vertical = 4.dp),
@@ -1005,7 +1051,7 @@ fun RegisterScreen(
 
                     OutlinedTextField(
                         value = emergencyNote,
-                        onValueChange = { emergencyNote = it },
+                        onValueChange = { emergencyNote = it; errorMessage = "" },
                         label = { Text("Nota para una emergencia") },
                         placeholder = { Text("Información breve que debería conocer un contacto de confianza") },
                         modifier = Modifier.fillMaxWidth().height(120.dp).padding(vertical = 4.dp),
@@ -1020,32 +1066,48 @@ fun RegisterScreen(
                         maxLines = 5
                     )
 
+                    if (errorMessage.isNotEmpty()) {
+                        Text(
+                            text = errorMessage,
+                            color = Color(0xFFEF4444),
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(top = 12.dp).align(Alignment.Start),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(24.dp))
 
                     Button(
                         onClick = {
-                            isLoading = true
-                            scope.launch {
-                                try {
-                                    val api = ApiClient.getApiService(context)
-                                    val response = api.updateMedicalProfile(
-                                        UpdateMedicalProfileRequest(
-                                            tipoSangre = if (bloodType == "Selecciona") null else bloodType,
-                                            alergias = if (allergies.isBlank()) null else allergies.trim(),
-                                            condiciones = if (conditions.isBlank()) null else conditions.trim(),
-                                            medicamentos = if (medications.isBlank()) null else medications.trim(),
-                                            nota = if (emergencyNote.isBlank()) null else emergencyNote.trim()
+                            if (allergies.length > 500 || conditions.length > 500 || medications.length > 500 || emergencyNote.length > 500) {
+                                errorMessage = "Ninguno de los campos médicos puede exceder los 500 caracteres."
+                            } else {
+                                isLoading = true
+                                errorMessage = ""
+                                scope.launch {
+                                    try {
+                                        val api = ApiClient.getApiService(context)
+                                        val response = api.updateMedicalProfile(
+                                            UpdateMedicalProfileRequest(
+                                                tipoSangre = if (bloodType == "Selecciona") null else bloodType,
+                                                alergias = if (allergies.isBlank()) null else allergies.trim(),
+                                                condiciones = if (conditions.isBlank()) null else conditions.trim(),
+                                                medicamentos = if (medications.isBlank()) null else medications.trim(),
+                                                nota = if (emergencyNote.isBlank()) null else emergencyNote.trim()
+                                            )
                                         )
-                                    )
-                                    if (response.isSuccessful) {
+                                        if (response.isSuccessful) {
+                                            errorMessage = ""
+                                            currentStep = 5
+                                        } else {
+                                            errorMessage = "Error al actualizar la ficha médica."
+                                        }
+                                    } catch (e: Exception) {
                                         currentStep = 5
-                                    } else {
-                                        errorMessage = "Error al actualizar la ficha médica."
+                                    } finally {
+                                        isLoading = false
                                     }
-                                } catch (e: Exception) {
-                                    currentStep = 5
-                                } finally {
-                                    isLoading = false
                                 }
                             }
                         },
@@ -1108,7 +1170,7 @@ fun RegisterScreen(
                         Card(
                             modifier = Modifier
                                 .weight(1f)
-                                .clickable { invitationType = "Contacto" },
+                                .clickable { invitationType = "Contacto"; errorMessage = "" },
                             colors = CardDefaults.cardColors(
                                 containerColor = if (invitationType == "Contacto") Color(0xFF162E4A) else Color.Transparent
                             )
@@ -1117,7 +1179,7 @@ fun RegisterScreen(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     RadioButton(
                                         selected = invitationType == "Contacto",
-                                        onClick = { invitationType = "Contacto" },
+                                        onClick = { invitationType = "Contacto"; errorMessage = "" },
                                         colors = RadioButtonDefaults.colors(selectedColor = TealPrimary)
                                     )
                                     Text("Contacto", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
@@ -1129,7 +1191,7 @@ fun RegisterScreen(
                         Card(
                             modifier = Modifier
                                 .weight(1f)
-                                .clickable { invitationType = "Monitor" },
+                                .clickable { invitationType = "Monitor"; errorMessage = "" },
                             colors = CardDefaults.cardColors(
                                 containerColor = if (invitationType == "Monitor") Color(0xFF162E4A) else Color.Transparent
                             )
@@ -1138,7 +1200,7 @@ fun RegisterScreen(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     RadioButton(
                                         selected = invitationType == "Monitor",
-                                        onClick = { invitationType = "Monitor" },
+                                        onClick = { invitationType = "Monitor"; errorMessage = "" },
                                         colors = RadioButtonDefaults.colors(selectedColor = TealPrimary)
                                     )
                                     Text("Monitor", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
@@ -1156,7 +1218,7 @@ fun RegisterScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(
                                 selected = searchBy == "Username",
-                                onClick = { searchBy = "Username" },
+                                onClick = { searchBy = "Username"; errorMessage = "" },
                                 colors = RadioButtonDefaults.colors(selectedColor = TealPrimary)
                             )
                             Text("Nombre de usuario", color = Color.White, fontSize = 13.sp)
@@ -1164,7 +1226,7 @@ fun RegisterScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(
                                 selected = searchBy == "Email",
-                                onClick = { searchBy = "Email" },
+                                onClick = { searchBy = "Email"; errorMessage = "" },
                                 colors = RadioButtonDefaults.colors(selectedColor = TealPrimary)
                             )
                             Text("Correo electrónico", color = Color.White, fontSize = 13.sp)
@@ -1191,7 +1253,7 @@ fun RegisterScreen(
                     if (invitationType == "Contacto") {
                         OutlinedTextField(
                             value = inviteRelationship,
-                            onValueChange = { inviteRelationship = it },
+                            onValueChange = { inviteRelationship = it; errorMessage = "" },
                             label = { Text("Relación contigo *") },
                             placeholder = { Text("Familiar, Amigo, etc.") },
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -1237,6 +1299,7 @@ fun RegisterScreen(
                                     onClick = {
                                         invitePriority = "Primary"
                                         priorityDropdownExpanded = false
+                                        errorMessage = ""
                                     }
                                 )
                                 DropdownMenuItem(
@@ -1244,6 +1307,7 @@ fun RegisterScreen(
                                     onClick = {
                                         invitePriority = "Secondary"
                                         priorityDropdownExpanded = false
+                                        errorMessage = ""
                                     }
                                 )
                             }
@@ -1276,56 +1340,65 @@ fun RegisterScreen(
 
                     Button(
                         onClick = {
+                            val emailPattern = android.util.Patterns.EMAIL_ADDRESS
+                            val isEmailValid = emailPattern.matcher(inviteInput.trim()).matches()
+                            val usernamePattern = "^[a-zA-Z0-9_.]+$".toRegex()
+
                             if (inviteInput.isBlank()) {
                                 errorMessage = "Por favor escribe el correo o nombre de usuario de la persona."
-                                return@Button
-                            }
+                            } else if (searchBy == "Email" && !isEmailValid) {
+                                errorMessage = "Por favor ingresa un correo electrónico válido."
+                            } else if (searchBy == "Username" && (!inviteInput.trim().matches(usernamePattern) || inviteInput.trim().length < 3)) {
+                                errorMessage = "El nombre de usuario debe ser válido (mínimo 3 caracteres)."
+                            } else if (invitationType == "Contacto" && inviteRelationship.trim().length < 2) {
+                                errorMessage = "La relación debe tener al menos 2 caracteres (ej: Familiar, Amigo)."
+                            } else {
+                                isLoading = true
+                                errorMessage = ""
+                                scope.launch {
+                                    try {
+                                        val api = ApiClient.getApiService(context)
+                                        val inviteUser = if (searchBy == "Username") inviteInput.trim() else null
+                                        val inviteEmail = if (searchBy == "Email") inviteInput.trim() else null
 
-                            isLoading = true
-                            errorMessage = ""
-                            scope.launch {
-                                try {
-                                    val api = ApiClient.getApiService(context)
-                                    val inviteUser = if (searchBy == "Username") inviteInput.trim() else null
-                                    val inviteEmail = if (searchBy == "Email") inviteInput.trim() else null
-
-                                    if (invitationType == "Contacto") {
-                                        val response = api.createEmergencyContactInvitation(
-                                            CreateEmergencyContactInvitationRequest(
-                                                username = inviteUser,
-                                                email = inviteEmail,
-                                                publicProfileId = null,
-                                                relationship = inviteRelationship.trim(),
-                                                priority = invitePriority,
-                                                makePrimaryWhenAccepted = makePrimaryWhenAccepted
+                                        if (invitationType == "Contacto") {
+                                            val response = api.createEmergencyContactInvitation(
+                                                CreateEmergencyContactInvitationRequest(
+                                                    username = inviteUser,
+                                                    email = inviteEmail,
+                                                    publicProfileId = null,
+                                                    relationship = inviteRelationship.trim(),
+                                                    priority = invitePriority,
+                                                    makePrimaryWhenAccepted = makePrimaryWhenAccepted
+                                                )
                                             )
-                                        )
-                                        if (response.isSuccessful) {
-                                            Toast.makeText(context, "Invitación enviada", Toast.LENGTH_SHORT).show()
-                                            onRegisterSuccess(name)
+                                            if (response.isSuccessful) {
+                                                Toast.makeText(context, "Invitación enviada", Toast.LENGTH_SHORT).show()
+                                                onRegisterSuccess(name)
+                                            } else {
+                                                errorMessage = "Error al enviar la invitación: usuario no encontrado."
+                                            }
                                         } else {
-                                            errorMessage = "Error al enviar la invitación: usuario no encontrado."
-                                        }
-                                    } else {
-                                        val response = api.createMonitoringInvitation(
-                                            CreateMonitoringInvitationRequest(
-                                                username = inviteUser,
-                                                email = inviteEmail,
-                                                publicProfileId = null,
-                                                permissions = MonitoringPermissionsRequest()
+                                            val response = api.createMonitoringInvitation(
+                                                CreateMonitoringInvitationRequest(
+                                                    username = inviteUser,
+                                                    email = inviteEmail,
+                                                    publicProfileId = null,
+                                                    permissions = MonitoringPermissionsRequest()
+                                                )
                                             )
-                                        )
-                                        if (response.isSuccessful) {
-                                            Toast.makeText(context, "Invitación enviada", Toast.LENGTH_SHORT).show()
-                                            onRegisterSuccess(name)
-                                        } else {
-                                            errorMessage = "Error al enviar la invitación: usuario no encontrado o conflicto."
+                                            if (response.isSuccessful) {
+                                                Toast.makeText(context, "Invitación enviada", Toast.LENGTH_SHORT).show()
+                                                onRegisterSuccess(name)
+                                            } else {
+                                                errorMessage = "Error al enviar la invitación: usuario no encontrado o conflicto."
+                                            }
                                         }
+                                    } catch (e: Exception) {
+                                        onRegisterSuccess(name)
+                                    } finally {
+                                        isLoading = false
                                     }
-                                } catch (e: Exception) {
-                                    onRegisterSuccess(name)
-                                } finally {
-                                    isLoading = false
                                 }
                             }
                         },

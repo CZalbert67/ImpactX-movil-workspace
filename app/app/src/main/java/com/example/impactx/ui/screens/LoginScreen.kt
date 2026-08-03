@@ -83,7 +83,8 @@ fun LoginScreen(
             OutlinedTextField(
                 value = email,
                 onValueChange = { email = it; errorMessage = "" },
-                label = { Text("Correo Electrónico") },
+                label = { Text("Correo o Usuario") },
+                placeholder = { Text("Ingresa tu correo o usuario") },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 8.dp),
@@ -143,11 +144,8 @@ fun LoginScreen(
             // Login Button
             Button(
                 onClick = {
-                    val emailPattern = "^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\$"
                     if (email.isBlank() || password.isBlank()) {
                         errorMessage = "Por favor completa todos los campos."
-                    } else if (!email.trim().matches(emailPattern.toRegex())) {
-                        errorMessage = "Por favor ingresa un correo electrónico válido."
                     } else if (password.length < 6) {
                         errorMessage = "La contraseña debe tener al menos 6 caracteres."
                     } else if (isLoading) {
