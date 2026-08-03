@@ -202,6 +202,11 @@ class SensorService : Service(), SensorEventListener {
         }
     }
 
+    private fun getBatteryLevel(): Int {
+        val bm = getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager
+        return bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: 100
+    }
+
     private fun sendTelemetryToPhone() {
         serviceScope.launch {
             try {
@@ -211,6 +216,7 @@ class SensorService : Service(), SensorEventListener {
                     put("gForce", _gForce.value)
                     put("maxGForce", _maxGForce.value)
                     put("isImpact", _impactDetected.value)
+                    put("batteryLevel", getBatteryLevel())
                 }.toString().toByteArray()
 
                 for (node in nodes) {

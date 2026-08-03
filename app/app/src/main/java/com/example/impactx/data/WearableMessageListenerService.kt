@@ -39,13 +39,15 @@ class WearableMessageListenerService : WearableListenerService() {
             val json = JSONObject(rawData)
             val heartRate = json.optInt("heartRate", 0)
             val gForce = json.optDouble("gForce", 1.0).toFloat()
+            val batteryLevel = json.optInt("batteryLevel", 100)
 
             WearableManager.realHeartRate = heartRate
+            WearableManager.realBatteryLevel = batteryLevel
             WearableManager.bleState = BLEState.CONNECTED_DASHBOARD
             WearableManager.isRealConnection = true
             WearableManager.connectedDeviceName = "Galaxy Watch (Wear OS)"
 
-            Log.d("WearSync", "Telemetry updated: HR=$heartRate, G=$gForce")
+            Log.d("WearSync", "Telemetry updated: HR=$heartRate, G=$gForce, Batt=$batteryLevel%")
         } catch (e: Exception) {
             Log.e("WearSync", "Error parsing telemetry: ${e.message}")
         }
