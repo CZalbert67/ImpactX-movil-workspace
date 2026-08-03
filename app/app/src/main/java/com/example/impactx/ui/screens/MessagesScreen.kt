@@ -52,6 +52,7 @@ fun MessagesScreen(
     var isLoadingTemplates by remember { mutableStateOf(true) }
     var isSendingMessage by remember { mutableStateOf(false) }
     var myProfileId by remember { mutableStateOf("") }
+    var myUsername by remember { mutableStateOf("") }
     
     // UI dropdown states
     var isRecipientDropdownExpanded by remember { mutableStateOf(false) }
@@ -125,6 +126,7 @@ fun MessagesScreen(
                 val response = api.getProfileUsername()
                 if (response.isSuccessful) {
                     myProfileId = response.body()?.publicProfileId ?: ""
+                    myUsername = response.body()?.username ?: ""
                 }
             } catch (e: Exception) {
                 // Ignore
@@ -440,13 +442,16 @@ fun MessagesScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         chatHistory.reversed().forEach { msg ->
-                            val isOutgoing = msg.senderPublicProfileId != selectedRelation?.monitoredPublicProfileId && msg.senderPublicProfileId != selectedRelation?.monitorPublicProfileId
+                            val isOutgoing = msg.senderPublicProfileId == myProfileId || msg.senderUsername == myUsername
                             
                             val align = if (isOutgoing) Alignment.End else Alignment.Start
-                            val bubbleColor = if (isOutgoing) Color(0xFF102D44) else Color(0xFF182535)
-                            val alignText = if (isOutgoing) "Tú" else "@${msg.senderUsername}"
+                            val bubbleColor = if (isOutgoing) Color(0xFF005C4B) else Color(0xFF202C33)
 
-                            Column(modifier = Modifier.align(align).fillMaxWidth(0.85f)) {
+                            Column(
+                                modifier = Modifier
+                                    .align(align)
+                                    .widthIn(max = 280.dp)
+                            ) {
                                 Card(
                                     shape = RoundedCornerShape(
                                         topStart = 12.dp,
@@ -457,30 +462,33 @@ fun MessagesScreen(
                                     colors = CardDefaults.cardColors(containerColor = bubbleColor),
                                     modifier = Modifier.align(align)
                                 ) {
-                                    Column(modifier = Modifier.padding(10.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = alignText,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = TealPrimary
-                                            )
-                                            if (!msg.isRead && !isOutgoing) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .clip(RoundedCornerShape(4.dp))
-                                                        .background(Color(0xFFF59E0B).copy(alpha = 0.2f))
-                                                        .padding(horizontal = 4.dp, vertical = 1.dp)
-                                                ) {
-                                                    Text("NUEVO", fontSize = 8.sp, color = Color(0xFFF59E0B), fontWeight = FontWeight.Bold)
+                                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                        if (!isOutgoing) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "@${msg.senderUsername}",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = TealPrimary
+                                                )
+                                                if (!msg.isRead) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .clip(RoundedCornerShape(4.dp))
+                                                            .background(Color(0xFFF59E0B).copy(alpha = 0.2f))
+                                                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    ) {
+                                                        Text("NUEVO", fontSize = 8.sp, color = Color(0xFFF59E0B), fontWeight = FontWeight.Bold)
+                                                    }
                                                 }
                                             }
+                                            Spacer(modifier = Modifier.height(4.dp))
                                         }
-                                        Spacer(modifier = Modifier.height(4.dp))
+
                                         Text(
                                             text = msg.text,
                                             color = Color.White,
@@ -500,16 +508,26 @@ fun MessagesScreen(
                                         }
                                         
                                         Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            modifier = Modifier.align(Alignment.End),
+                                            horizontalArrangement = Arrangement.End,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
                                                 text = timeStr,
                                                 fontSize = 9.sp,
-                                                color = GrayMuted
+                                                color = Color.White.copy(alpha = 0.6f)
                                             )
+                                            if (isOutgoing) {
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = "✓✓",
+                                                    fontSize = 11.sp,
+                                                    color = if (msg.isRead) Color(0xFF53BDEB) else Color.White.copy(alpha = 0.4f),
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
                                             if (!msg.isRead && !isOutgoing) {
+                                                Spacer(modifier = Modifier.width(8.dp))
                                                 Text(
                                                     text = "Marcar leído",
                                                     fontSize = 9.sp,
@@ -521,7 +539,7 @@ fun MessagesScreen(
                                                                 val api = ApiClient.getApiService(context)
                                                                 val response = api.markQuickMessageRead(msg.publicMessageId)
                                                                 if (response.isSuccessful) {
-                                                                    val otherProfileId = if (selectedRelation?.monitoredPublicProfileId != null && selectedRelation?.monitoredUsername?.isNotEmpty() == true) {
+                                                                    val otherProfileId = if (selectedRelation?.monitorPublicProfileId == myProfileId) {
                                                                         selectedRelation?.monitoredPublicProfileId
                                                                     } else {
                                                                         selectedRelation?.monitorPublicProfileId
