@@ -9,7 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Warning
 import androidx.wear.compose.material.*
 import androidx.compose.runtime.*
@@ -352,7 +352,7 @@ fun WearHomeScreen(
                     modifier = Modifier.size(34.dp)
                 ) {
                     Icon(
-                        imageVector = if (isServiceRunning) Icons.Default.Stop else Icons.Default.PlayArrow,
+                        imageVector = if (isServiceRunning) Icons.Default.Close else Icons.Default.PlayArrow,
                         contentDescription = null,
                         tint = Color.White,
                         modifier = Modifier.size(16.dp)
