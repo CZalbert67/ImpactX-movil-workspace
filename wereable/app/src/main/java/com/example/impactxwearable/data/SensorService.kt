@@ -165,12 +165,65 @@ class SensorService : Service(), SensorEventListener {
         _impactDetected.value = true
         sendSignalToPhone("/impact-detected", "CRITICAL_IMPACT")
         
-        // Start Alarm Activity
+        // 1. Wake physical screen using WakeLock
+        try {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            val screenWakeLock = powerManager.newWakeLock(
+                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
+                "ImpactX:SensorServiceScreenWakeLock"
+            )
+            screenWakeLock.acquire(15000L /* 15 seconds */)
+        } catch (e: Exception) {
+            Log.e("SensorService", "Failed to acquire screen wake lock: ${e.message}")
+        }
+
+        // 2. High priority notification with fullScreenIntent
+        val emergencyChannelId = "wearable_emergency_alerts"
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                emergencyChannelId,
+                "Alertas Críticas de Emergencia",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notificaciones de colisión y pánico"
+                enableLights(true)
+                enableVibration(true)
+            }
+            notificationManager.createNotificationChannel(channel)
+        }
+
         val alarmIntent = Intent(this, Class.forName("com.example.impactxwearable.MainActivity")).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("TRIGGER_ALARM", true)
         }
-        startActivity(alarmIntent)
+
+        val fullScreenPendingIntent = PendingIntent.getActivity(
+            this,
+            2027,
+            alarmIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, emergencyChannelId)
+            .setSmallIcon(android.R.drawable.stat_notify_error)
+            .setContentTitle("¡Colisión Detectada!")
+            .setContentText("Sospecha de colisión grave. Iniciando SOS...")
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setFullScreenIntent(fullScreenPendingIntent, true)
+            .setAutoCancel(true)
+            .build()
+
+        notificationManager.notify(2027, notification)
+
+        // 3. Start Activity directly
+        try {
+            startActivity(alarmIntent)
+        } catch (e: Exception) {
+            Log.e("SensorService", "Failed to start MainActivity directly: ${e.message}")
+        }
     }
 
     fun resetAlarm() {

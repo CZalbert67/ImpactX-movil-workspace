@@ -1,6 +1,14 @@
 package com.example.impactx.data
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.os.Build
 import android.util.Log
+import androidx.core.app.NotificationCompat
+import com.example.impactx.MainActivity
 import com.example.impactx.data.remote.ApiClient
 import com.example.impactx.data.remote.SosRequest
 import com.example.impactx.data.remote.StartTripRequest
@@ -55,6 +63,9 @@ class WearableMessageListenerService : WearableListenerService() {
 
     // ─── Impact / SOS ────────────────────────────────────────────────────────
     private fun handleImpact(rawData: String) {
+        // Trigger screen wake and high-priority app launch immediately
+        triggerEmergencyAutoLaunch(applicationContext)
+
         scope.launch {
             try {
                 val json = runCatching { JSONObject(rawData) }.getOrNull()
@@ -99,6 +110,57 @@ class WearableMessageListenerService : WearableListenerService() {
                 // Still open emergency screen even if API fails
                 WearableManager.triggerEmergencyNav = true
             }
+        }
+    }
+
+    private fun triggerEmergencyAutoLaunch(context: Context) {
+        val channelId = "emergency_alerts"
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "Alertas Críticas de Colisión",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notificaciones prioritarias para incidentes y colisiones detectadas"
+                enableLights(true)
+                enableVibration(true)
+            }
+            notificationManager.createNotificationChannel(channel)
+        }
+
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("TRIGGER_ALARM", true)
+        } ?: Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("TRIGGER_ALARM", true)
+        }
+
+        val fullScreenPendingIntent = PendingIntent.getActivity(
+            context,
+            1001,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(android.R.drawable.stat_notify_error)
+            .setContentTitle("¡Posible Colisión Detectada!")
+            .setContentText("Abre la aplicación para verificar tu estado.")
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setFullScreenIntent(fullScreenPendingIntent, true)
+            .setAutoCancel(true)
+            .build()
+
+        notificationManager.notify(1001, notification)
+
+        try {
+            context.startActivity(launchIntent)
+        } catch (e: Exception) {
+            Log.e("WearSync", "Failed to start MainActivity directly: ${e.message}")
         }
     }
 
@@ -155,3 +217,4 @@ class WearableMessageListenerService : WearableListenerService() {
         }
     }
 }
+

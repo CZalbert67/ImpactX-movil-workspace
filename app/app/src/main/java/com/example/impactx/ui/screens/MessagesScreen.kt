@@ -9,6 +9,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -160,7 +163,7 @@ fun MessagesScreen(
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(DarkBlue, Color(0xFF040D17))
+                    colors = listOf(DarkBlue, DarkBlueEnd)
                 )
             )
             .systemBarsPadding()
@@ -188,7 +191,7 @@ fun MessagesScreen(
                     text = "Mensajes Rápidos",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = TextPrimaryColor
                 )
             }
 
@@ -210,7 +213,7 @@ fun MessagesScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF102238))
+                        .background(CardBgColor)
                         .clickable { isRecipientDropdownExpanded = true }
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -221,7 +224,7 @@ fun MessagesScreen(
                         Column {
                             Text(
                                 text = "@${rel.monitorUsername.ifEmpty { rel.monitoredUsername ?: "Usuario" }}",
-                                color = Color.White,
+                                color = TextPrimaryColor,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp
                             )
@@ -242,11 +245,11 @@ fun MessagesScreen(
                     onDismissRequest = { isRecipientDropdownExpanded = false },
                     modifier = Modifier
                         .fillMaxWidth(0.9f)
-                        .background(Color(0xFF0F1E30))
+                        .background(CardElevatedColor)
                 ) {
                     if (isLoadingRelations) {
                         DropdownMenuItem(
-                            text = { Text("Cargando destinatarios...", color = Color.White) },
+                            text = { Text("Cargando destinatarios...", color = TextPrimaryColor) },
                             onClick = {}
                         )
                     } else if (relationsList.isEmpty()) {
@@ -260,7 +263,7 @@ fun MessagesScreen(
                             DropdownMenuItem(
                                 text = {
                                     Column {
-                                        Text("@$username", color = Color.White, fontWeight = FontWeight.Bold)
+                                        Text("@$username", color = TextPrimaryColor, fontWeight = FontWeight.Bold)
                                         Text(rel.monitorName.ifEmpty { rel.monitoredName ?: "Relación" }, color = GrayMuted, fontSize = 11.sp)
                                     }
                                 },
@@ -292,8 +295,8 @@ fun MessagesScreen(
                     .fillMaxWidth()
                     .weight(1f),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF0C1929)),
-                border = BorderStroke(1.dp, Color(0xFF102238))
+                colors = CardDefaults.cardColors(containerColor = CardBgColor),
+                border = BorderStroke(1.dp, GrayMuted.copy(alpha = 0.2f))
             ) {
                 if (selectedRelation == null) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -317,126 +320,136 @@ fun MessagesScreen(
                         )
                     }
                 } else {
-                    Column(
+                    val listState = rememberLazyListState()
+                    val displayMessages = remember(chatHistory) { chatHistory.reversed() }
+
+                    LaunchedEffect(displayMessages.size) {
+                        if (displayMessages.isNotEmpty()) {
+                            listState.animateScrollToItem(displayMessages.size - 1)
+                        }
+                    }
+
+                    LazyColumn(
+                        state = listState,
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(12.dp)
-                            .verticalScroll(rememberScrollState()),
+                            .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        chatHistory.reversed().forEach { msg ->
+                        items(displayMessages) { msg ->
                             val isOutgoing = msg.senderPublicProfileId == myProfileId || msg.senderUsername == myUsername
-                            
                             val align = if (isOutgoing) Alignment.End else Alignment.Start
                             val bubbleColor = if (isOutgoing) Color(0xFF005C4B) else Color(0xFF202C33)
 
                             Column(
-                                modifier = Modifier
-                                    .align(align)
-                                    .widthIn(max = 280.dp)
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Card(
-                                    shape = RoundedCornerShape(
-                                        topStart = 12.dp,
-                                        topEnd = 12.dp,
-                                        bottomStart = if (isOutgoing) 12.dp else 0.dp,
-                                        bottomEnd = if (isOutgoing) 0.dp else 12.dp
-                                    ),
-                                    colors = CardDefaults.cardColors(containerColor = bubbleColor),
-                                    modifier = Modifier.align(align)
+                                Box(
+                                    modifier = Modifier
+                                        .align(align)
+                                        .widthIn(max = 280.dp)
                                 ) {
-                                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                                        if (!isOutgoing) {
+                                    Card(
+                                        shape = RoundedCornerShape(
+                                            topStart = 12.dp,
+                                            topEnd = 12.dp,
+                                            bottomStart = if (isOutgoing) 12.dp else 0.dp,
+                                            bottomEnd = if (isOutgoing) 0.dp else 12.dp
+                                        ),
+                                        colors = CardDefaults.cardColors(containerColor = bubbleColor)
+                                    ) {
+                                        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                            if (!isOutgoing) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = "@${msg.senderUsername}",
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = TealPrimary
+                                                    )
+                                                    if (!msg.isRead) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .clip(RoundedCornerShape(4.dp))
+                                                                .background(Color(0xFFF59E0B).copy(alpha = 0.2f))
+                                                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                        ) {
+                                                            Text("NUEVO", fontSize = 8.sp, color = Color(0xFFF59E0B), fontWeight = FontWeight.Bold)
+                                                        }
+                                                    }
+                                                }
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                            }
+
+                                            Text(
+                                                text = msg.text,
+                                                color = Color.White,
+                                                fontSize = 14.sp
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            
+                                            val timeStr = try {
+                                                val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
+                                                parser.timeZone = TimeZone.getTimeZone("UTC")
+                                                val date = parser.parse(msg.sentAtUtc)
+                                                val formatter = SimpleDateFormat("h:mm a", Locale.getDefault())
+                                                formatter.format(date ?: Date())
+                                            } catch (e: Exception) {
+                                                ""
+                                            }
+                                            
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                horizontalArrangement = Arrangement.End,
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Text(
-                                                    text = "@${msg.senderUsername}",
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = TealPrimary
+                                                    text = timeStr,
+                                                    fontSize = 10.sp,
+                                                    color = Color.White.copy(alpha = 0.5f)
                                                 )
-                                                if (!msg.isRead) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .clip(RoundedCornerShape(4.dp))
-                                                            .background(Color(0xFFF59E0B).copy(alpha = 0.2f))
-                                                            .padding(horizontal = 4.dp, vertical = 1.dp)
-                                                    ) {
-                                                        Text("NUEVO", fontSize = 8.sp, color = Color(0xFFF59E0B), fontWeight = FontWeight.Bold)
-                                                    }
+                                                if (isOutgoing) {
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text(
+                                                        text = "✓✓",
+                                                        fontSize = 11.sp,
+                                                        color = if (msg.isRead) Color(0xFF53BDEB) else Color.White.copy(alpha = 0.4f),
+                                                        fontWeight = FontWeight.Bold
+                                                    )
                                                 }
-                                            }
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                        }
-
-                                        Text(
-                                            text = msg.text,
-                                            color = Color.White,
-                                            fontSize = 14.sp
-                                        )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        
-                                        // Time format
-                                        val timeStr = try {
-                                            val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
-                                            parser.timeZone = TimeZone.getTimeZone("UTC")
-                                            val date = parser.parse(msg.sentAtUtc)
-                                            val formatter = SimpleDateFormat("h:mm a", Locale.getDefault())
-                                            formatter.format(date ?: Date())
-                                        } catch (e: Exception) {
-                                            ""
-                                        }
-                                        
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.End,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = timeStr,
-                                                fontSize = 10.sp,
-                                                color = Color.White.copy(alpha = 0.5f)
-                                            )
-                                            if (isOutgoing) {
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text(
-                                                    text = "✓✓",
-                                                    fontSize = 11.sp,
-                                                    color = if (msg.isRead) Color(0xFF53BDEB) else Color.White.copy(alpha = 0.4f),
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                            if (!msg.isRead && !isOutgoing) {
-                                                Spacer(modifier = Modifier.width(8.dp))
-                                                Text(
-                                                    text = "Marcar leído",
-                                                    fontSize = 9.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = TealPrimary,
-                                                    modifier = Modifier.clickable {
-                                                        scope.launch {
-                                                            try {
-                                                                val api = ApiClient.getApiService(context)
-                                                                val response = api.markQuickMessageRead(msg.publicMessageId)
-                                                                if (response.isSuccessful) {
-                                                                    val otherProfileId = if (selectedRelation?.monitorPublicProfileId == myProfileId) {
-                                                                        selectedRelation?.monitoredPublicProfileId
-                                                                    } else {
-                                                                        selectedRelation?.monitorPublicProfileId
+                                                if (!msg.isRead && !isOutgoing) {
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text(
+                                                        text = "Marcar leído",
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = TealPrimary,
+                                                        modifier = Modifier.clickable {
+                                                            scope.launch {
+                                                                try {
+                                                                    val api = ApiClient.getApiService(context)
+                                                                    val response = api.markQuickMessageRead(msg.publicMessageId)
+                                                                    if (response.isSuccessful) {
+                                                                        val otherProfileId = if (selectedRelation?.monitorPublicProfileId == myProfileId) {
+                                                                            selectedRelation?.monitoredPublicProfileId
+                                                                        } else {
+                                                                            selectedRelation?.monitorPublicProfileId
+                                                                        }
+                                                                        if (otherProfileId != null) {
+                                                                            refreshHistory(otherProfileId)
+                                                                        }
                                                                     }
-                                                                    if (otherProfileId != null) {
-                                                                        refreshHistory(otherProfileId)
-                                                                    }
+                                                                } catch (e: Exception) {
+                                                                    // Ignore
                                                                 }
-                                                            } catch (e: Exception) {
-                                                                // Ignore
                                                             }
                                                         }
-                                                    }
-                                                )
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -470,7 +483,7 @@ fun MessagesScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF102238))
+                            .background(CardBgColor)
                             .clickable { showTemplatesOverlay = true }
                             .padding(horizontal = 16.dp, vertical = 14.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -480,7 +493,7 @@ fun MessagesScreen(
                             text = selectedTemplate?.let { temp ->
                                 "${if (temp.isSystem) "Oficial" else "Personal"}: ${temp.text}"
                             } ?: "Selecciona plantilla...",
-                            color = Color.White,
+                            color = TextPrimaryColor,
                             fontSize = 14.sp,
                             maxLines = 1
                         )
@@ -532,7 +545,13 @@ fun MessagesScreen(
                     modifier = Modifier
                         .size(48.dp)
                         .clip(CircleShape)
-                        .background(if (selectedRelation != null && selectedTemplate != null && !isSendingMessage) TealPrimary else Color(0xFF102238))
+                        .background(
+                            if (selectedRelation != null && selectedTemplate != null && !isSendingMessage) {
+                                Color(0xFF00A884) // WhatsApp Green
+                            } else {
+                                CardBgColor
+                            }
+                        )
                 ) {
                     if (isSendingMessage) {
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
@@ -541,7 +560,7 @@ fun MessagesScreen(
                             imageVector = Icons.Default.Send,
                             contentDescription = "Enviar",
                             tint = Color.White,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
@@ -620,7 +639,7 @@ fun MessagesScreen(
                                                 showTemplatesOverlay = false
                                             },
                                         shape = RoundedCornerShape(10.dp),
-                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF162534))
+                                        colors = CardDefaults.cardColors(containerColor = CardElevatedColor)
                                     ) {
                                         Row(
                                             modifier = Modifier
@@ -649,7 +668,7 @@ fun MessagesScreen(
                                                 Spacer(modifier = Modifier.width(10.dp))
                                                 Text(
                                                     text = temp.text,
-                                                    color = Color.White,
+                                                    color = TextPrimaryColor,
                                                     fontSize = 13.sp,
                                                     maxLines = 2
                                                 )
@@ -684,7 +703,7 @@ fun MessagesScreen(
                 }
             },
             confirmButton = {},
-            containerColor = Color(0xFF0C1929)
+            containerColor = CardBgColor
         )
     }
 
@@ -692,7 +711,7 @@ fun MessagesScreen(
     if (showNewTemplateDialog) {
         AlertDialog(
             onDismissRequest = { showNewTemplateDialog = false },
-            title = { Text("Nueva Plantilla", color = Color.White) },
+            title = { Text("Nueva Plantilla", color = TextPrimaryColor) },
             text = {
                 Column {
                     Text(
@@ -710,8 +729,8 @@ fun MessagesScreen(
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = TealPrimary,
                             unfocusedBorderColor = GrayMuted,
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White
+                            focusedTextColor = TextPrimaryColor,
+                            unfocusedTextColor = TextPrimaryColor
                         ),
                         maxLines = 3
                     )
@@ -751,13 +770,13 @@ fun MessagesScreen(
             dismissButton = {
                 OutlinedButton(
                     onClick = { showNewTemplateDialog = false },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimaryColor),
                     border = BorderStroke(1.dp, GrayMuted)
                 ) {
                     Text("Cancelar")
                 }
             },
-            containerColor = Color(0xFF0C1929)
+            containerColor = CardBgColor
         )
     }
 }

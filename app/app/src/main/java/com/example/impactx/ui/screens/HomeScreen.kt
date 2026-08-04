@@ -23,10 +23,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.*
 import com.example.impactx.data.remote.*
 import kotlinx.coroutines.launch
 import android.widget.Toast
@@ -113,49 +112,169 @@ fun HomeScreen(
             .ifEmpty { "U" }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(DarkBlue, Color(0xFF040D17))
-                )
-            )
-            .systemBarsPadding()
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerContainerColor = CardBgColor,
+                modifier = Modifier.width(280.dp),
+                drawerShape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(20.dp)
+                ) {
+                    Text(
+                        text = "Impact.X",
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = TealPrimary,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                    
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(bottom = 24.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(50.dp)
+                                .clip(CircleShape)
+                                .background(TealPrimary),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = initials,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = userName,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimaryColor
+                            )
+                            Text(
+                                text = "Plan $currentPlan",
+                                fontSize = 12.sp,
+                                color = if (currentPlan == "Básico") Color(0xFFF59E0B) else Color(0xFF22C55E),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
+                    Divider(color = GrayMuted.copy(alpha = 0.2f), modifier = Modifier.padding(bottom = 16.dp))
+
+                    val menuItems: List<Triple<String, ImageVector, () -> Unit>> = listOf(
+                        Triple("Inicio", Icons.Default.Home, { scope.launch { drawerState.close() }; Unit }),
+                        Triple("Ficha Médica", Icons.Default.Favorite, { scope.launch { drawerState.close() }; onNavigateToMedical() }),
+                        Triple("Mi Vehículo", Icons.Default.Info, { scope.launch { drawerState.close() }; onNavigateToVehicle() }),
+                        Triple("Contactos y SOS", Icons.Default.Share, { scope.launch { drawerState.close() }; onNavigateToContacts() }),
+                        Triple("Mensajes Rápidos", Icons.Default.Send, { scope.launch { drawerState.close() }; onNavigateToMessages() }),
+                        Triple("Sincronizar Reloj", Icons.Default.Refresh, { scope.launch { drawerState.close() }; onNavigateToWearableSync() }),
+                        Triple("Mis Planes", Icons.Default.Star, { scope.launch { drawerState.close() }; onNavigateToPlans() }),
+                        Triple("Mi Perfil", Icons.Default.Person, { scope.launch { drawerState.close() }; onNavigateToProfile() })
+                    )
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        menuItems.forEach { (title, icon, action) ->
+                            NavigationDrawerItem(
+                                label = { Text(text = title, fontWeight = FontWeight.Medium, color = TextPrimaryColor) },
+                                selected = false,
+                                onClick = action,
+                                icon = { Icon(imageVector = icon, contentDescription = title, tint = TealPrimary) },
+                                colors = NavigationDrawerItemDefaults.colors(
+                                    unselectedContainerColor = Color.Transparent
+                                )
+                            )
+                        }
+                    }
+
+                    Divider(color = GrayMuted.copy(alpha = 0.2f), modifier = Modifier.padding(vertical = 16.dp))
+
+                    Text(
+                        text = "DISEÑO / TEMA",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GrayMuted,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        AppTheme.values().forEach { theme ->
+                            val isSelected = ThemeConfig.currentTheme == theme
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) TealPrimary else CardElevatedColor)
+                                    .clickable { ThemeConfig.currentTheme = theme }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = when (theme) {
+                                        AppTheme.IMPACTX_NEON -> "Neon"
+                                        AppTheme.PROFESSIONAL -> "Pro"
+                                        AppTheme.CLARO -> "Claro"
+                                    },
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSelected) Color.Black else TextSecondaryColor
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(20.dp)
-                .verticalScroll(rememberScrollState())
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(DarkBlue, DarkBlueEnd)
+                    )
+                )
+                .systemBarsPadding()
         ) {
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Custom Top Bar
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState())
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Profile initials avatar (Click logs out)
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(TealPrimary)
-                            .clickable { onNavigateToProfile() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = initials,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(
+                                imageVector = Icons.Default.Menu,
+                                contentDescription = "Abrir menú",
+                                tint = TealPrimary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.clickable {
@@ -167,373 +286,250 @@ fun HomeScreen(
                                 text = "Hola, $userName",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                color = TextPrimaryColor
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "✏️",
-                                fontSize = 12.sp,
-                                color = TealPrimary
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Editar",
+                                tint = TealPrimary,
+                                modifier = Modifier.size(16.dp)
                             )
                         }
-                        
-                        // Static User ID Display
-                        Text(
-                            text = "ID: $userId",
-                            fontSize = 11.sp,
-                            color = GrayMuted,
-                            fontWeight = FontWeight.Normal,
-                            modifier = Modifier.padding(vertical = 1.dp)
-                        )
+                    }
 
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.clickable { onNavigateToPlans() }
+                    Box {
+                        IconButton(
+                            onClick = {
+                                refreshNotifications()
+                                showNotificationsDialog = true
+                            }
                         ) {
+                            Icon(
+                                imageVector = Icons.Default.Notifications,
+                                contentDescription = "Notificaciones",
+                                tint = if (unreadNotificationsCount > 0) TealPrimary else TextPrimaryColor,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                        if (unreadNotificationsCount > 0) {
                             Box(
                                 modifier = Modifier
-                                    .size(8.dp)
+                                    .size(10.dp)
                                     .clip(CircleShape)
-                                    .background(
-                                        when (currentPlan) {
-                                            "Básico" -> Color(0xFFF59E0B)
-                                            else -> Color(0xFF22C55E)
-                                        }
-                                    )
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Plan $currentPlan >",
-                                fontSize = 12.sp,
-                                color = when (currentPlan) {
-                                    "Básico" -> Color(0xFFF59E0B)
-                                    else -> Color(0xFF22C55E)
-                                },
-                                fontWeight = FontWeight.SemiBold
+                                    .background(Color.Red)
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = (-2).dp, y = 2.dp)
                             )
                         }
                     }
                 }
 
-                Box {
-                    IconButton(
-                        onClick = {
-                            refreshNotifications()
-                            showNotificationsDialog = true
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Notifications,
-                            contentDescription = "Notificaciones",
-                            tint = if (unreadNotificationsCount > 0) TealPrimary else Color.White,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-                    if (unreadNotificationsCount > 0) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .clip(CircleShape)
-                                .background(Color.Red)
-                                .align(Alignment.TopEnd)
-                                .offset(x = (-2).dp, y = 2.dp)
-                        )
-                    }
-                }
-            }
-
-            val isConnected = WearableManager.bleState == BLEState.CONNECTED_DASHBOARD
-            
-            // Pulse animation for the heart icon on the card
-            val infiniteTransitionCard = rememberInfiniteTransition(label = "heartPulseCard")
-            val heartScaleCard by infiniteTransitionCard.animateFloat(
-                initialValue = 1f,
-                targetValue = 1.25f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(
-                        durationMillis = if (isConnected) (60000 / WearableManager.realHeartRate.coerceAtLeast(30)) else 800,
-                        easing = FastOutSlowInEasing
+                val isConnected = WearableManager.bleState == BLEState.CONNECTED_DASHBOARD
+                
+                val infiniteTransitionCard = rememberInfiniteTransition(label = "heartPulseCard")
+                val heartScaleCard by infiniteTransitionCard.animateFloat(
+                    initialValue = 1f,
+                    targetValue = 1.25f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(
+                            durationMillis = if (isConnected) (60000 / WearableManager.realHeartRate.coerceAtLeast(30)) else 800,
+                            easing = FastOutSlowInEasing
+                        ),
+                        repeatMode = RepeatMode.Reverse
                     ),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "scale"
-            )
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Main Status Banner (Clickable to sync wearable)
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onNavigateToWearableSync() },
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isConnected) Color(0xFF0F3A2E) else Color(0xFF102238)
-                ),
-                border = if (isConnected) BorderStroke(1.dp, Color(0xFF22C55E).copy(alpha = 0.4f)) else null
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "SMARTWATCH",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isConnected) Color(0xFF22C55E) else TealPrimary,
-                            letterSpacing = 1.sp
-                        )
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(if (isConnected) Color(0xFF22C55E).copy(alpha = 0.15f) else TealPrimary.copy(alpha = 0.15f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = if (isConnected) "🟢 VINCULADO" else "DESCONECTADO",
-                                fontSize = 9.sp,
-                                color = if (isConnected) Color(0xFF22C55E) else TealPrimary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    
-                    if (isConnected) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Pulsing heart
-                            Box(
-                                modifier = Modifier
-                                    .scale(heartScaleCard)
-                                    .size(32.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("❤️", fontSize = 24.sp)
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    text = "${WearableManager.realHeartRate} BPM",
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                                Text(
-                                    text = "Batería del reloj: ${WearableManager.realBatteryLevel}%",
-                                    fontSize = 12.sp,
-                                    color = GrayMuted
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = "Dispositivo: ${WearableManager.connectedDeviceName ?: "Galaxy Watch"}",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White
-                        )
-                        Text(
-                            text = "Presiona para administrar la conexión y ver telemetría completa.",
-                            fontSize = 11.sp,
-                            color = GrayMuted
-                        )
-                    } else {
-                        Text(
-                            text = "Vincular Reloj / Sensores BLE",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                        Text(
-                            text = "Configura y diagnostica la telemetría física cardíaca y G-Force en tiempo real.",
-                            fontSize = 12.sp,
-                            color = GrayMuted,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(28.dp))
-
-            // Central Shield Status View
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(240.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                // Outer Pulse Ring
-                Box(
-                    modifier = Modifier
-                        .size(pulseSize.dp)
-                        .clip(CircleShape)
-                        .background(TealPrimary.copy(alpha = pulseAlpha))
+                    label = "scale"
                 )
 
-                // Main Core Shield Circle
-                Box(
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Card(
                     modifier = Modifier
-                        .size(120.dp)
-                        .clip(CircleShape)
-                        .background(
-                            Brush.radialGradient(
-                                colors = listOf(TealPrimary, Color(0xFF004D4D))
-                            )
-                        )
-                        .border(2.dp, Color.White.copy(alpha = 0.3f), CircleShape),
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .clickable { onNavigateToWearableSync() },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isConnected) Color(0xFF0F3A2E) else CardBgColor
+                    ),
+                    border = if (isConnected) BorderStroke(1.dp, Color(0xFF22C55E).copy(alpha = 0.4f)) else null
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "🛡️",
-                            fontSize = 42.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "PROTEGIDO",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            letterSpacing = 1.sp
-                        )
-                        if (isConnected) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Text(
-                                text = "❤️ ${WearableManager.realHeartRate} BPM",
+                                text = "SMARTWATCH",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF22C55E),
-                                modifier = Modifier.padding(top = 2.dp)
+                                color = if (isConnected) Color(0xFF22C55E) else TealPrimary,
+                                letterSpacing = 1.sp
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isConnected) Color(0xFF22C55E) else TealPrimary)
+                                )
+                                Text(
+                                    text = if (isConnected) "VINCULADO" else "DESCONECTADO",
+                                    fontSize = 9.sp,
+                                    color = if (isConnected) Color(0xFF22C55E) else TealPrimary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        
+                        if (isConnected) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Favorite,
+                                    contentDescription = "Ritmo cardíaco",
+                                    tint = Color.Red,
+                                    modifier = Modifier
+                                        .scale(heartScaleCard)
+                                        .size(32.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "${WearableManager.realHeartRate} BPM",
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimaryColor
+                                    )
+                                    Text(
+                                        text = "Batería del reloj: ${WearableManager.realBatteryLevel}%",
+                                        fontSize = 12.sp,
+                                        color = TextSecondaryColor
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = "Dispositivo: ${WearableManager.connectedDeviceName ?: "Galaxy Watch"}",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimaryColor
+                            )
+                            Text(
+                                text = "Presiona para administrar la conexión y ver telemetría completa.",
+                                fontSize = 11.sp,
+                                color = TextSecondaryColor
+                            )
+                        } else {
+                            Text(
+                                text = "Vincular Reloj / Sensores BLE",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimaryColor
+                            )
+                            Text(
+                                text = "Configura y diagnostica la telemetría física cardíaca y G-Force en tiempo real.",
+                                fontSize = 12.sp,
+                                color = TextSecondaryColor,
+                                modifier = Modifier.padding(top = 4.dp)
                             )
                         }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(28.dp))
 
-            // Sub-status text
-            Text(
-                text = "Monitoreo de colisión en segundo plano activo.",
-                color = Color.White,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center
-            )
-            Text(
-                text = "El viaje se iniciará de forma automática al comenzar la actividad desde tu Smartwatch.",
-                color = GrayMuted,
-                fontSize = 11.sp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .padding(top = 6.dp),
-                textAlign = TextAlign.Center,
-                lineHeight = 15.sp
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Navigation Options List
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // Medical Profile Card
-                Row(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF102238))
-                        .clickable { onNavigateToMedical() }
-                        .padding(14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .height(240.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("❤️", fontSize = 20.sp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("Ficha Médica de Emergencia", fontWeight = FontWeight.Bold, color = Color.White)
-                            Text("Tipo de sangre, alergias y notas", fontSize = 12.sp, color = GrayMuted)
+                    Box(
+                        modifier = Modifier
+                            .size(pulseSize.dp)
+                            .clip(CircleShape)
+                            .background(TealPrimary.copy(alpha = pulseAlpha))
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .size(120.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.radialGradient(
+                                    colors = listOf(TealPrimary, Color(0xFF004D4D))
+                                )
+                            )
+                            .border(2.dp, Color.White.copy(alpha = 0.3f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = "Protección activa",
+                                tint = Color.White,
+                                modifier = Modifier.size(42.dp)
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "PROTEGIDO",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                letterSpacing = 1.sp
+                            )
+                            if (isConnected) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                    modifier = Modifier.padding(top = 2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Favorite,
+                                        contentDescription = null,
+                                        tint = Color(0xFF22C55E),
+                                        modifier = Modifier.size(10.dp)
+                                    )
+                                    Text(
+                                        text = "${WearableManager.realHeartRate} BPM",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF22C55E)
+                                    )
+                                }
+                            }
                         }
                     }
-                    Text("›", fontSize = 24.sp, color = GrayMuted)
                 }
 
-                // Vehicle Profile Card
-                Row(
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "Monitoreo de colisión en segundo plano activo.",
+                    color = TextPrimaryColor,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = "El viaje se iniciará de forma automática al comenzar la actividad desde tu Smartwatch.",
+                    color = TextSecondaryColor,
+                    fontSize = 11.sp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF102238))
-                        .clickable { onNavigateToVehicle() }
-                        .padding(14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("🚗", fontSize = 20.sp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("Mi Vehículo Registrado", fontWeight = FontWeight.Bold, color = Color.White)
-                            Text("Modelo, placas y velocidad habitual", fontSize = 12.sp, color = GrayMuted)
-                        }
-                    }
-                    Text("›", fontSize = 24.sp, color = GrayMuted)
-                }
-
-                // Contacts and Monitors Card
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF102238))
-                        .clickable { onNavigateToContacts() }
-                        .padding(14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("🛡️", fontSize = 20.sp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("Contactos y Monitores", fontWeight = FontWeight.Bold, color = Color.White)
-                            Text("Red de alerta en colisiones", fontSize = 12.sp, color = GrayMuted)
-                        }
-                    }
-                    Text("›", fontSize = 24.sp, color = GrayMuted)
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Messages and Chat Card
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF102238))
-                        .clickable { onNavigateToMessages() }
-                        .padding(14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("💬", fontSize = 20.sp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("Mensajes de Emergencia", fontWeight = FontWeight.Bold, color = Color.White)
-                            Text("Chat rápido de plantillas", fontSize = 12.sp, color = GrayMuted)
-                        }
-                    }
-                    Text("›", fontSize = 24.sp, color = GrayMuted)
-                }
+                        .padding(horizontal = 20.dp)
+                        .padding(top = 6.dp),
+                    textAlign = TextAlign.Center,
+                    lineHeight = 15.sp
+                )
             }
         }
     }
@@ -596,7 +592,7 @@ fun HomeScreen(
                     Text("Cancelar")
                 }
             },
-            containerColor = Color(0xFF102238),
+            containerColor = CardBgColor,
             shape = RoundedCornerShape(16.dp)
         )
     }
@@ -780,7 +776,7 @@ fun HomeScreen(
                 }
             },
             confirmButton = {},
-            containerColor = Color(0xFF0C1929),
+            containerColor = CardElevatedColor,
             shape = RoundedCornerShape(16.dp)
         )
     }

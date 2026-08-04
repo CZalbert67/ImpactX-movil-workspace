@@ -15,9 +15,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Block
-import androidx.compose.material.icons.filled.RemoveRedEye
-import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,8 +35,6 @@ import androidx.compose.ui.unit.sp
 import com.example.impactx.data.remote.*
 import kotlinx.coroutines.launch
 
-
-
 @Composable
 fun ContactsScreen(
     currentPlan: String,
@@ -45,90 +45,103 @@ fun ContactsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var activeTab by remember { mutableIntStateOf(0) } // 0 = Monitoreo, 1 = Contactos SOS
+    var activeTab by remember { mutableIntStateOf(0) } // 0 = Mi Grupo, 1 = Permisos
 
-    // --- Tab 1: Monitoreo State ---
-    var myUsername by remember { mutableStateOf("") }
+    // Profile state
     var myProfileId by remember { mutableStateOf("") }
-    var manualCodeInput by remember { mutableStateOf("") }
-    var inviteUsernameInput by remember { mutableStateOf("") }
-    
-    // Permission toggles for new invitation
-    var permViewRoutes by remember { mutableStateOf(true) }
-    var permViewLocation by remember { mutableStateOf(true) }
-    var permViewEmergency by remember { mutableStateOf(true) }
-    var permViewIncidents by remember { mutableStateOf(true) }
-    var permReceiveAlerts by remember { mutableStateOf(true) }
-    var permSendMessages by remember { mutableStateOf(true) }
-    var permViewTelemetry by remember { mutableStateOf(true) }
-    var permReceiveNotifications by remember { mutableStateOf(true) }
+    var myUsername by remember { mutableStateOf("") }
 
-    var relationshipsList by remember { mutableStateOf<List<MonitoringRelationshipDto>>(emptyList()) }
-    var isLoadingMonitors by remember { mutableStateOf(true) }
-    var showInvitationCodeDialog by remember { mutableStateOf<String?>(null) }
-    var selectedRelationshipForDetail by remember { mutableStateOf<MonitoringRelationshipDto?>(null) }
+    // Family Summary
+    var familySummary by remember { mutableStateOf<FamilySubscriptionSummaryDto?>(null) }
+    var isLoadingSummary by remember { mutableStateOf(true) }
 
-    // --- Tab 2: Contactos SOS State ---
-    var contactManualCodeInput by remember { mutableStateOf("") }
-    var contactInviteUsernameInput by remember { mutableStateOf("") }
-    var contactInviteRelationshipInput by remember { mutableStateOf("") }
-    var contactInviteMakePrimary by remember { mutableStateOf(false) }
-    var contactsList by remember { mutableStateOf<List<EmergencyContactDto>>(emptyList()) }
-    var isLoadingContacts by remember { mutableStateOf(true) }
-    var isSavingContact by remember { mutableStateOf(false) }
-    var showContactInvitationCodeDialog by remember { mutableStateOf<String?>(null) }
+    // Members list
+    var membersList by remember { mutableStateOf<List<FamilyMemberDto>>(emptyList()) }
+    var isLoadingMembers by remember { mutableStateOf(true) }
 
-    // --- Actions ---
-    fun refreshMonitors() {
-        isLoadingMonitors = true
+    // Invitations
+    var sentInvitations by remember { mutableStateOf<List<FamilyInvitationDto>>(emptyList()) }
+    var isLoadingSentInvites by remember { mutableStateOf(true) }
+
+    var incomingInvitations by remember { mutableStateOf<List<IncomingFamilyInvitationDto>>(emptyList()) }
+    var isLoadingIncomingInvites by remember { mutableStateOf(true) }
+
+    // Access list (Permissions)
+    var accessList by remember { mutableStateOf<List<FamilyMemberAccessDto>>(emptyList()) }
+    var isLoadingAccess by remember { mutableStateOf(true) }
+
+    // Inputs for invite
+    var inviteUsername by remember { mutableStateOf("") }
+    var inviteEmail by remember { mutableStateOf("") }
+    var isSendingInvite by remember { mutableStateOf(false) }
+
+    // Input for redeem code
+    var redeemCodeInput by remember { mutableStateOf("") }
+    var isRedeemingCode by remember { mutableStateOf(false) }
+
+    // Dialog code for newly created invitation
+    var showManualCodeDialog by remember { mutableStateOf<String?>(null) }
+
+    // Refresh action
+    fun refreshAll() {
         scope.launch {
             try {
                 val api = ApiClient.getApiService(context)
-                val response = api.getMonitoringRelationships()
-                if (response.isSuccessful) {
-                    relationshipsList = response.body() ?: emptyList()
+                
+                // Fetch profile
+                val profileRes = api.getProfileUsername()
+                if (profileRes.isSuccessful) {
+                    myProfileId = profileRes.body()?.publicProfileId ?: ""
+                    myUsername = profileRes.body()?.username ?: ""
                 }
+
+                // Get summary
+                isLoadingSummary = true
+                val summaryRes = api.getFamilySubscription()
+                if (summaryRes.isSuccessful) {
+                    familySummary = summaryRes.body()
+                }
+                isLoadingSummary = false
+
+                // Get members
+                isLoadingMembers = true
+                val membersRes = api.getFamilyMembers()
+                if (membersRes.isSuccessful) {
+                    membersList = membersRes.body() ?: emptyList()
+                }
+                isLoadingMembers = false
+
+                // Get sent invitations
+                isLoadingSentInvites = true
+                val sentRes = api.getFamilyInvitations()
+                if (sentRes.isSuccessful) {
+                    sentInvitations = sentRes.body() ?: emptyList()
+                }
+                isLoadingSentInvites = false
+
+                // Get incoming invitations
+                isLoadingIncomingInvites = true
+                val incomingRes = api.getIncomingFamilyInvitations()
+                if (incomingRes.isSuccessful) {
+                    incomingInvitations = incomingRes.body() ?: emptyList()
+                }
+                isLoadingIncomingInvites = false
+
+                // Get access list
+                isLoadingAccess = true
+                val accessRes = api.getFamilyMembersAccess()
+                if (accessRes.isSuccessful) {
+                    accessList = accessRes.body() ?: emptyList()
+                }
+                isLoadingAccess = false
             } catch (e: Exception) {
-                Toast.makeText(context, "Error de red al cargar relaciones", Toast.LENGTH_SHORT).show()
-            } finally {
-                isLoadingMonitors = false
+                Toast.makeText(context, "Error de red al actualizar datos", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    fun refreshContacts() {
-        isLoadingContacts = true
-        scope.launch {
-            try {
-                val api = ApiClient.getApiService(context)
-                val response = api.getEmergencyContacts()
-                if (response.isSuccessful) {
-                    contactsList = response.body() ?: emptyList()
-                }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Error de red al cargar contactos", Toast.LENGTH_SHORT).show()
-            } finally {
-                isLoadingContacts = false
-            }
-        }
-    }
-
-    // Load username info
     LaunchedEffect(Unit) {
-        scope.launch {
-            try {
-                val api = ApiClient.getApiService(context)
-                val response = api.getProfileUsername()
-                if (response.isSuccessful) {
-                    myUsername = response.body()?.username ?: ""
-                    myProfileId = response.body()?.publicProfileId ?: ""
-                }
-            } catch (e: Exception) {
-                // Ignore
-            }
-        }
-        refreshMonitors()
-        refreshContacts()
+        refreshAll()
     }
 
     Box(
@@ -136,7 +149,7 @@ fun ContactsScreen(
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(DarkBlue, Color(0xFF040D17))
+                    colors = listOf(DarkBlue, DarkBlueEnd)
                 )
             )
             .systemBarsPadding()
@@ -144,7 +157,7 @@ fun ContactsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(20.dp)
+                .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -162,21 +175,64 @@ fun ContactsScreen(
                 )
                 Spacer(modifier = Modifier.width(24.dp))
                 Text(
-                    text = "Monitoreo y Contactos",
+                    text = "Grupo y Seguridad V2",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = TextPrimaryColor
                 )
             }
 
             Spacer(modifier = Modifier.height(20.dp))
+
+            // Current plan badge banner
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = CardBgColor),
+                border = BorderStroke(1.dp, GrayMuted.copy(alpha = 0.2f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Mi Suscripción",
+                            fontSize = 12.sp,
+                            color = GrayMuted,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = familySummary?.planName?.let {
+                                when(it.lowercase()) {
+                                    "free" -> "Plan Básico"
+                                    "basic" -> "Plan Premium"
+                                    "premium" -> "Plan Familiar Guardián"
+                                    else -> it
+                                }
+                            } ?: "Plan Básico",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimaryColor
+                        )
+                    }
+                    Button(
+                        onClick = onNavigateToPlans,
+                        colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
+                    ) {
+                        Text("Ver Planes", color = Color.White)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Tab Selector
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF102238))
+                    .background(CardBgColor)
                     .padding(4.dp)
             ) {
                 Box(
@@ -189,7 +245,7 @@ fun ContactsScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Monitoreo",
+                        text = "Mi Grupo",
                         fontWeight = FontWeight.Bold,
                         color = if (activeTab == 0) Color.White else GrayMuted,
                         fontSize = 14.sp
@@ -205,7 +261,7 @@ fun ContactsScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Contactos SOS",
+                        text = "Permisos y SOS",
                         fontWeight = FontWeight.Bold,
                         color = if (activeTab == 1) Color.White else GrayMuted,
                         fontSize = 14.sp
@@ -215,607 +271,12 @@ fun ContactsScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // --- TAB CONTENT ---
             if (activeTab == 0) {
-                // --- MONITOREO TAB ---
+                // ================== TAB 0: MI GRUPO ==================
                 
-
-
-                // Código Manual Recibido (Aceptar invitaciones compartidas)
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF102238).copy(alpha = 0.6f)),
-                    border = BorderStroke(1.dp, Color(0xFF102238))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Código Manual Recibido",
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            fontSize = 14.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        OutlinedTextField(
-                            value = manualCodeInput,
-                            onValueChange = { manualCodeInput = it },
-                            label = { Text("Pegar código de invitación") },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = TealPrimary,
-                                unfocusedBorderColor = GrayMuted,
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White
-                            ),
-                            singleLine = true
-                        )
-                        
-                        Spacer(modifier = Modifier.height(12.dp))
-                        
-                        Button(
-                            onClick = {
-                                if (manualCodeInput.isBlank()) return@Button
-                                scope.launch {
-                                    try {
-                                        val api = ApiClient.getApiService(context)
-                                        val response = api.acceptMonitoringInvitation(
-                                            AcceptMonitoringInvitationRequest(code = manualCodeInput.trim().uppercase())
-                                        )
-                                        if (response.isSuccessful) {
-                                            Toast.makeText(context, "Invitación aceptada con éxito!", Toast.LENGTH_SHORT).show()
-                                            manualCodeInput = ""
-                                            refreshMonitors()
-                                        } else {
-                                            Toast.makeText(context, "Código inválido o expirado", Toast.LENGTH_SHORT).show()
-                                        }
-                                    } catch (e: Exception) {
-                                        Toast.makeText(context, "Error de red", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth().height(48.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
-                        ) {
-                            Text("Aceptar Invitación", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Invitar a Monitoreo Form
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF102238).copy(alpha = 0.8f))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Invitar a Monitoreo",
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            fontSize = 14.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        OutlinedTextField(
-                            value = inviteUsernameInput,
-                            onValueChange = { inviteUsernameInput = it },
-                            label = { Text("Nombre de usuario a invitar") },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = TealPrimary,
-                                unfocusedBorderColor = GrayMuted,
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White
-                            ),
-                            singleLine = true
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "Permisos Iniciales",
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            fontSize = 12.sp
-                        )
-                        
-                        // Permisos Checklist Grid
-                        Column(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                             val items = listOf(
-                                 Triple("Rutas", permViewRoutes) { valChecked: Boolean -> permViewRoutes = valChecked },
-                                 Triple("Ubicación", permViewLocation) { valChecked: Boolean -> permViewLocation = valChecked },
-                                 Triple("Ubicación de Emergencia", permViewEmergency) { valChecked: Boolean -> permViewEmergency = valChecked },
-                                 Triple("Incidentes", permViewIncidents) { valChecked: Boolean -> permViewIncidents = valChecked },
-                                 Triple("Alertas Críticas", permReceiveAlerts) { valChecked: Boolean -> permReceiveAlerts = valChecked },
-                                 Triple("Enviar Mensajes", permSendMessages) { valChecked: Boolean -> permSendMessages = valChecked },
-                                 Triple("Telemetría", permViewTelemetry) { valChecked: Boolean -> permViewTelemetry = valChecked },
-                                 Triple("Notificaciones", permReceiveNotifications) { valChecked: Boolean -> permReceiveNotifications = valChecked }
-                             )
-                            items.chunked(2).forEach { pair ->
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    pair.forEach { (label, value, onChecked) ->
-                                        Row(
-                                            modifier = Modifier.weight(1f).padding(vertical = 2.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Checkbox(
-                                                checked = value,
-                                                onCheckedChange = onChecked,
-                                                colors = CheckboxDefaults.colors(checkedColor = TealPrimary)
-                                            )
-                                            Text(label, color = Color.White, fontSize = 11.sp, maxLines = 1)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-                        
-                        Button(
-                            onClick = {
-                                if (inviteUsernameInput.isBlank()) {
-                                    Toast.makeText(context, "Ingresa un nombre de usuario", Toast.LENGTH_SHORT).show()
-                                    return@Button
-                                }
-                                scope.launch {
-                                    try {
-                                        val api = ApiClient.getApiService(context)
-                                        val request = CreateMonitoringInvitationRequest(
-                                            username = inviteUsernameInput.trim(),
-                                            permissions = MonitoringPermissionsRequest(
-                                                viewRoutes = permViewRoutes,
-                                                viewLocation = permViewLocation,
-                                                viewEmergencyLocation = permViewEmergency,
-                                                viewIncidents = permViewIncidents,
-                                                receiveCriticalAlerts = permReceiveAlerts,
-                                                sendMessages = permSendMessages,
-                                                viewTelemetry = permViewTelemetry,
-                                                receiveNotifications = permReceiveNotifications
-                                            )
-                                        )
-                                        val response = api.createMonitoringInvitation(request)
-                                        if (response.isSuccessful) {
-                                            val body = response.body()
-                                            showInvitationCodeDialog = body?.manualCode
-                                            inviteUsernameInput = ""
-                                            refreshMonitors()
-                                        } else {
-                                            Toast.makeText(context, "Usuario no encontrado o conflicto", Toast.LENGTH_SHORT).show()
-                                        }
-                                    } catch (e: Exception) {
-                                        Toast.makeText(context, "Error de red", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth().height(48.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
-                        ) {
-                            Text("Crear Invitación", fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Relations Title
+                // 1. Members List
                 Text(
-                    text = "RELACIONES DE MONITOREO",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = GrayMuted,
-                    modifier = Modifier.align(Alignment.Start),
-                    letterSpacing = 1.sp
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Relations List
-                if (isLoadingMonitors) {
-                    CircularProgressIndicator(color = TealPrimary, modifier = Modifier.padding(24.dp))
-                } else if (relationshipsList.isEmpty()) {
-                    Text(
-                        text = "Aún no tienes relaciones de monitoreo.",
-                        color = GrayMuted,
-                        fontSize = 14.sp,
-                        modifier = Modifier.padding(vertical = 16.dp)
-                    )
-                } else {
-                    relationshipsList.forEach { relation ->
-                        // Distinguish direction
-                        val isMyMonitor = relation.monitorPublicProfileId != myProfileId
-                        val title = if (isMyMonitor) "Monitorea mi cuenta" else "Cuenta que monitoreo"
-                        val userLabel = if (isMyMonitor) relation.monitorUsername else (relation.monitoredUsername ?: "Invitado")
-                        val code = if (isMyMonitor) relation.monitorPublicProfileId else (relation.monitoredPublicProfileId ?: "")
-
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp)
-                                .clickable { selectedRelationshipForDetail = relation },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF102238).copy(alpha = 0.5f))
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                text = "@$userLabel",
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White,
-                                                fontSize = 16.sp
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            
-                                            // Status Badge
-                                            val badgeBg = when (relation.status.lowercase()) {
-                                                "accepted" -> Color(0xFF22C55E).copy(alpha = 0.15f)
-                                                "pending" -> Color(0xFFF59E0B).copy(alpha = 0.15f)
-                                                else -> Color(0xFFEF4444).copy(alpha = 0.15f)
-                                            }
-                                            val badgeFg = when (relation.status.lowercase()) {
-                                                "accepted" -> Color(0xFF22C55E)
-                                                "pending" -> Color(0xFFF59E0B)
-                                                else -> Color(0xFFEF4444)
-                                            }
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(6.dp))
-                                                    .background(badgeBg)
-                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                                            ) {
-                                                Text(
-                                                    text = relation.status.uppercase(),
-                                                    fontSize = 10.sp,
-                                                    color = badgeFg,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                        }
-                                        Text(
-                                            text = title,
-                                            fontSize = 12.sp,
-                                            color = GrayMuted,
-                                            modifier = Modifier.padding(top = 2.dp)
-                                        )
-                                    }
-
-                                    // Action Button
-                                    if (relation.status.lowercase() == "accepted" || relation.status.lowercase() == "pending") {
-                                        IconButton(
-                                            onClick = {
-                                                scope.launch {
-                                                    try {
-                                                        val api = ApiClient.getApiService(context)
-                                                        val response = api.revokeMonitoringRelationship(relation.publicRelationshipId)
-                                                        if (response.isSuccessful) {
-                                                            Toast.makeText(context, "Relación revocada", Toast.LENGTH_SHORT).show()
-                                                            refreshMonitors()
-                                                        }
-                                                    } catch (e: Exception) {
-                                                        Toast.makeText(context, "Error al revocar", Toast.LENGTH_SHORT).show()
-                                                    }
-                                                }
-                                            }
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Delete,
-                                                contentDescription = "Revocar",
-                                                tint = Color(0xFFEF4444)
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-                                
-                                // Render Permissions summary
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    val permissionsText = listOf(
-                                        "Rutas" to relation.permissions.viewRoutes,
-                                        "Ubicación" to relation.permissions.viewLocation,
-                                        "Telemetría" to relation.permissions.viewTelemetry,
-                                        "Mensajes" to relation.permissions.sendMessages
-                                    )
-                                    permissionsText.forEach { (permName, isGranted) ->
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(if (isGranted) Color(0xFF00BFA5).copy(alpha = 0.1f) else Color(0xFFEF4444).copy(alpha = 0.1f))
-                                                .padding(horizontal = 6.dp, vertical = 3.dp)
-                                        ) {
-                                            Text(
-                                                text = "$permName: ${if (isGranted) "Sí" else "No"}",
-                                                fontSize = 9.sp,
-                                                color = if (isGranted) Color(0xFF00BFA5) else Color(0xFFEF4444),
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-            } else {
-                // --- TAB 2: CONTACTOS SOS TAB ---
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF102238))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Contactos de Respaldo", fontWeight = FontWeight.Bold, color = Color.White)
-                            Text(
-                                text = "Contactos vinculados: ${contactsList.size}",
-                                fontSize = 12.sp,
-                                color = GrayMuted
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Código Manual Recibido (Aceptar invitaciones de contacto)
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF102238))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Código Manual Recibido",
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            fontSize = 14.sp
-                        )
-                        Text(
-                            text = "Ingresa el código manual recibido para aceptar ser contacto SOS de otro usuario.",
-                            color = GrayMuted,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        )
-                        OutlinedTextField(
-                            value = contactManualCodeInput,
-                            onValueChange = { contactManualCodeInput = it },
-                            placeholder = { Text("Pegar código de invitación", color = GrayMuted) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = TealPrimary,
-                                unfocusedBorderColor = GrayMuted,
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White
-                            ),
-                            singleLine = true
-                        )
-                        
-                        Spacer(modifier = Modifier.height(12.dp))
-                        
-                        Button(
-                            onClick = {
-                                if (contactManualCodeInput.isBlank()) return@Button
-                                scope.launch {
-                                    try {
-                                        val api = ApiClient.getApiService(context)
-                                        val response = api.acceptEmergencyContactInvitation(
-                                            RespondEmergencyContactInvitationRequest(code = contactManualCodeInput.trim().uppercase())
-                                        )
-                                        if (response.isSuccessful) {
-                                            Toast.makeText(context, "Invitación SOS aceptada con éxito!", Toast.LENGTH_SHORT).show()
-                                            contactManualCodeInput = ""
-                                            refreshContacts()
-                                        } else {
-                                            Toast.makeText(context, "Código inválido o expirado", Toast.LENGTH_SHORT).show()
-                                        }
-                                    } catch (e: Exception) {
-                                        Toast.makeText(context, "Error de red", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth().height(48.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
-                        ) {
-                            Text("Aceptar Invitación SOS", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                // List of Contacts
-                if (isLoadingContacts) {
-                    CircularProgressIndicator(color = TealPrimary, modifier = Modifier.padding(24.dp))
-                } else if (contactsList.isEmpty()) {
-                    Text(
-                        text = "Aún no tienes contactos SOS vinculados.",
-                        color = GrayMuted,
-                        fontSize = 14.sp,
-                        modifier = Modifier.padding(vertical = 16.dp)
-                    )
-                } else {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        contactsList.forEach { contact ->
-                            val contactUser = if (contact.isOwner) contact.contactUsername ?: "Desconocido" else contact.ownerUsername
-                            val contactFullName = if (contact.isOwner) contact.contactName ?: "Contacto SOS" else contact.ownerName
-                            
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = Color(0xFF102238).copy(alpha = 0.5f)
-                                )
-                            ) {
-                                Column(modifier = Modifier.padding(16.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(40.dp)
-                                                    .clip(CircleShape)
-                                                    .background(TealPrimary.copy(alpha = 0.2f)),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(
-                                                    text = contactFullName.take(2).uppercase(),
-                                                    fontSize = 14.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = TealPrimary
-                                                )
-                                            }
-                                            Spacer(modifier = Modifier.width(12.dp))
-                                            Column {
-                                                Text(
-                                                    text = "@$contactUser",
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color.White
-                                                )
-                                                Text(
-                                                    text = "${contactFullName} (${contact.relationship ?: "Familiar"})",
-                                                    fontSize = 12.sp,
-                                                    color = GrayMuted
-                                                )
-                                            }
-                                        }
-
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            val badgeBg = when (contact.status.lowercase()) {
-                                                "accepted" -> Color(0xFF22C55E).copy(alpha = 0.15f)
-                                                "pending" -> Color(0xFFF59E0B).copy(alpha = 0.15f)
-                                                else -> Color(0xFFEF4444).copy(alpha = 0.15f)
-                                            }
-                                            val badgeFg = when (contact.status.lowercase()) {
-                                                "accepted" -> Color(0xFF22C55E)
-                                                "pending" -> Color(0xFFF59E0B)
-                                                else -> Color(0xFFEF4444)
-                                            }
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(6.dp))
-                                                    .background(badgeBg)
-                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                                            ) {
-                                                Text(
-                                                    text = contact.status.uppercase(),
-                                                    fontSize = 9.sp,
-                                                    color = badgeFg,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-
-                                            Spacer(modifier = Modifier.width(10.dp))
-
-                                            IconButton(
-                                                onClick = {
-                                                    scope.launch {
-                                                        try {
-                                                            val api = ApiClient.getApiService(context)
-                                                            val response = api.revokeEmergencyContact(contact.publicContactId)
-                                                            if (response.isSuccessful) {
-                                                                    Toast.makeText(context, "Contacto SOS eliminado", Toast.LENGTH_SHORT).show()
-                                                                    refreshContacts()
-                                                            }
-                                                        } catch (e: Exception) {
-                                                            Toast.makeText(context, "Error al eliminar contacto", Toast.LENGTH_SHORT).show()
-                                                        }
-                                                    }
-                                                }
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Delete,
-                                                    contentDescription = "Eliminar",
-                                                    tint = Color(0xFFEF4444)
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(8.dp))
-
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(4.dp))
-                                                    .background(if (contact.isPrimary) Color(0xFF22C55E).copy(alpha = 0.15f) else Color(0xFF64748B).copy(alpha = 0.15f))
-                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                                            ) {
-                                                Text(
-                                                    text = if (contact.isPrimary) "Prioridad: Principal" else "Prioridad: Secundario",
-                                                    fontSize = 10.sp,
-                                                    color = if (contact.isPrimary) Color(0xFF22C55E) else Color(0xFF94A3B8),
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                        }
-
-                                        if (!contact.isPrimary && contact.status.lowercase() == "accepted") {
-                                            Text(
-                                                text = "Hacer Principal",
-                                                color = TealPrimary,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                modifier = Modifier
-                                                    .clickable {
-                                                        scope.launch {
-                                                            try {
-                                                                val api = ApiClient.getApiService(context)
-                                                                val response = api.makeEmergencyContactPrimary(contact.publicContactId)
-                                                                if (response.isSuccessful) {
-                                                                    Toast.makeText(context, "Contacto marcado como principal", Toast.LENGTH_SHORT).show()
-                                                                    refreshContacts()
-                                                                }
-                                                            } catch (e: Exception) {
-                                                                Toast.makeText(context, "Error al actualizar contacto", Toast.LENGTH_SHORT).show()
-                                                            }
-                                                        }
-                                                    }
-                                                    .padding(6.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Text(
-                    text = "INVITAR A CONTACTO SOS",
+                    text = "MIEMBROS DE MI GRUPO FAMILIAR",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = GrayMuted,
@@ -824,443 +285,681 @@ fun ContactsScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                OutlinedTextField(
-                    value = contactInviteUsernameInput,
-                    onValueChange = { contactInviteUsernameInput = it },
-                    label = { Text("Usuario o correo a invitar") },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = TealPrimary,
-                        unfocusedBorderColor = GrayMuted,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
-                    ),
-                    singleLine = true
-                )
-
-                OutlinedTextField(
-                    value = contactInviteRelationshipInput,
-                    onValueChange = { contactInviteRelationshipInput = it },
-                    label = { Text("Parentesco (ej. Padre, Amigo)") },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = TealPrimary,
-                        unfocusedBorderColor = GrayMuted,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
-                    ),
-                    singleLine = true
-                )
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Checkbox(
-                        checked = contactInviteMakePrimary,
-                        onCheckedChange = { contactInviteMakePrimary = it },
-                        colors = CheckboxDefaults.colors(checkedColor = TealPrimary)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Hacer contacto principal al aceptar", color = Color.White, fontSize = 12.sp)
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Button(
-                    onClick = {
-                        if (contactInviteUsernameInput.isBlank()) {
-                            Toast.makeText(context, "Ingresa el nombre de usuario o correo", Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
-                        if (isSavingContact) return@Button
-                        isSavingContact = true
-                        
-                        val isEmail = contactInviteUsernameInput.contains("@")
-                        scope.launch {
-                            try {
-                                val api = ApiClient.getApiService(context)
-                                val response = api.createEmergencyContactInvitation(
-                                    CreateEmergencyContactInvitationRequest(
-                                        username = if (isEmail) null else contactInviteUsernameInput.trim(),
-                                        email = if (isEmail) contactInviteUsernameInput.trim() else null,
-                                        publicProfileId = null,
-                                        relationship = contactInviteRelationshipInput.trim().ifEmpty { "Familiar" },
-                                        priority = if (contactInviteMakePrimary) "Primary" else "Secondary",
-                                        makePrimaryWhenAccepted = contactInviteMakePrimary
+                if (isLoadingMembers) {
+                    CircularProgressIndicator(color = TealPrimary)
+                } else if (membersList.isEmpty()) {
+                    Text("No se encontraron miembros en el grupo familiar.", color = GrayMuted, fontSize = 13.sp)
+                } else {
+                    membersList.forEach { member ->
+                        val isMe = member.publicProfileId == myProfileId
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = CardBgColor),
+                            border = BorderStroke(1.dp, if (isMe) TealPrimary.copy(alpha = 0.5f) else GrayMuted.copy(alpha = 0.2f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                        .background(TealPrimary),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = member.displayName.take(2).uppercase(),
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold
                                     )
-                                )
-                                if (response.isSuccessful) {
-                                    val manualCode = response.body()?.manualCode ?: ""
-                                    contactInviteUsernameInput = ""
-                                    contactInviteRelationshipInput = ""
-                                    contactInviteMakePrimary = false
-                                    refreshContacts()
-                                    showContactInvitationCodeDialog = manualCode
-                                } else {
-                                    Toast.makeText(context, "Usuario no encontrado o ya invitado", Toast.LENGTH_SHORT).show()
                                 }
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "Error de red al invitar contacto", Toast.LENGTH_SHORT).show()
-                            } finally {
-                                isSavingContact = false
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = member.displayName + if (isMe) " (Tú)" else "",
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimaryColor
+                                    )
+                                    Text(
+                                        text = "@${member.username} • Role: ${if (member.role == FamilyMembershipRole.Owner) "Dueño" else "Miembro"}",
+                                        color = GrayMuted,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                                
+                                // Delete button for owner
+                                if (!isMe && familySummary?.currentUserRole == FamilyMembershipRole.Owner) {
+                                    IconButton(
+                                        onClick = {
+                                            scope.launch {
+                                                try {
+                                                    val api = ApiClient.getApiService(context)
+                                                    val res = api.removeFamilyMember(member.publicMembershipId)
+                                                    if (res.isSuccessful) {
+                                                        Toast.makeText(context, "Miembro eliminado", Toast.LENGTH_SHORT).show()
+                                                        refreshAll()
+                                                    }
+                                                } catch (e: Exception) {
+                                                    // ignore
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Eliminar", tint = Color(0xFFEF4444))
+                                    }
+                                }
+
+                                // Leave button for member
+                                if (isMe && member.role != FamilyMembershipRole.Owner && familySummary?.canLeaveGroup == true) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            scope.launch {
+                                                try {
+                                                    val api = ApiClient.getApiService(context)
+                                                    val res = api.leaveFamilyGroup()
+                                                    if (res.isSuccessful) {
+                                                        Toast.makeText(context, "Has salido del grupo", Toast.LENGTH_SHORT).show()
+                                                        refreshAll()
+                                                    }
+                                                } catch (e: Exception) {
+                                                    // ignore
+                                                }
+                                            }
+                                        },
+                                        border = BorderStroke(1.dp, Color(0xFFEF4444)),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444))
+                                    ) {
+                                        Text("Salir", fontSize = 12.sp)
+                                    }
+                                }
                             }
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // 2. Send Invitation Section
+                if (familySummary?.canInviteMembers == true) {
+                    Text(
+                        text = "INVITAR AL GRUPO",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GrayMuted,
+                        modifier = Modifier.align(Alignment.Start),
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = CardBgColor),
+                        border = BorderStroke(1.dp, GrayMuted.copy(alpha = 0.2f))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            OutlinedTextField(
+                                value = inviteUsername,
+                                onValueChange = { inviteUsername = it },
+                                label = { Text("Nombre de usuario (Opcional)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = TealPrimary,
+                                    unfocusedBorderColor = GrayMuted,
+                                    focusedTextColor = TextPrimaryColor,
+                                    unfocusedTextColor = TextPrimaryColor
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            OutlinedTextField(
+                                value = inviteEmail,
+                                onValueChange = { inviteEmail = it },
+                                label = { Text("Email (Opcional)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = TealPrimary,
+                                    unfocusedBorderColor = GrayMuted,
+                                    focusedTextColor = TextPrimaryColor,
+                                    unfocusedTextColor = TextPrimaryColor
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = {
+                                    if (inviteUsername.isBlank() && inviteEmail.isBlank()) {
+                                        Toast.makeText(context, "Escribe un usuario o email", Toast.LENGTH_SHORT).show()
+                                        return@Button
+                                    }
+                                    isSendingInvite = true
+                                    scope.launch {
+                                        try {
+                                            val api = ApiClient.getApiService(context)
+                                            val response = api.createFamilyInvitation(
+                                                CreateFamilyInvitationRequest(
+                                                    username = inviteUsername.trim().ifEmpty { null },
+                                                    email = inviteEmail.trim().ifEmpty { null },
+                                                    createMonitoringRelationship = true
+                                                )
+                                            )
+                                            if (response.isSuccessful) {
+                                                val body = response.body()
+                                                showManualCodeDialog = body?.manualCode
+                                                inviteUsername = ""
+                                                inviteEmail = ""
+                                                Toast.makeText(context, "Invitación creada!", Toast.LENGTH_SHORT).show()
+                                                refreshAll()
+                                            } else {
+                                                Toast.makeText(context, "Error al invitar: ${response.code()}", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Error de red al invitar", Toast.LENGTH_SHORT).show()
+                                        } finally {
+                                            isSendingInvite = false
+                                        }
+                                    }
+                                },
+                                enabled = !isSendingInvite,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
+                            ) {
+                                if (isSendingInvite) {
+                                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                                } else {
+                                    Text("Generar Invitación / Código", color = Color.White)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // 3. Redeem Manual Code
+                Text(
+                    text = "UNIRSE CON CÓDIGO",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = GrayMuted,
+                    modifier = Modifier.align(Alignment.Start),
+                    letterSpacing = 1.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
+                    colors = CardDefaults.cardColors(containerColor = CardBgColor),
+                    border = BorderStroke(1.dp, GrayMuted.copy(alpha = 0.2f))
                 ) {
-                    if (isSavingContact) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
-                    } else {
-                        Text("Crear Invitación SOS", fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = redeemCodeInput,
+                            onValueChange = { redeemCodeInput = it },
+                            label = { Text("Código (Ej. Sim123)") },
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = TealPrimary,
+                                unfocusedBorderColor = GrayMuted,
+                                focusedTextColor = TextPrimaryColor,
+                                unfocusedTextColor = TextPrimaryColor
+                            )
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Button(
+                            onClick = {
+                                if (redeemCodeInput.isBlank()) return@Button
+                                isRedeemingCode = true
+                                scope.launch {
+                                    try {
+                                        val api = ApiClient.getApiService(context)
+                                        val response = api.redeemFamilyInvitation(
+                                            RedeemFamilyInvitationRequest(code = redeemCodeInput.trim())
+                                        )
+                                        if (response.isSuccessful) {
+                                            Toast.makeText(context, "¡Te has unido con éxito!", Toast.LENGTH_SHORT).show()
+                                            redeemCodeInput = ""
+                                            refreshAll()
+                                        } else {
+                                            Toast.makeText(context, "Código inválido o ya usado", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Error de red al canjear", Toast.LENGTH_SHORT).show()
+                                    } finally {
+                                        isRedeemingCode = false
+                                    }
+                                }
+                            },
+                            enabled = !isRedeemingCode,
+                            colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
+                        ) {
+                            if (isRedeemingCode) {
+                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                            } else {
+                                Text("Canjear", color = Color.White)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // 4. Sent Pending Invitations
+                if (sentInvitations.isNotEmpty()) {
+                    Text(
+                        text = "INVITACIONES ENVIADAS PENDIENTES",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GrayMuted,
+                        modifier = Modifier.align(Alignment.Start),
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    sentInvitations.forEach { invite ->
+                        if (invite.status == FamilyInvitationStatus.Pending) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 8.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = CardBgColor)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = invite.targetUsername?.let { "@$it" } ?: invite.targetEmail ?: "Invitado",
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextPrimaryColor
+                                        )
+                                        Text(
+                                            text = "Expira: ${invite.expiresAtUtc.take(16).replace("T", " ")} UTC",
+                                            color = GrayMuted,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            scope.launch {
+                                                try {
+                                                    val api = ApiClient.getApiService(context)
+                                                    val res = api.revokeFamilyInvitation(invite.publicInvitationId)
+                                                    if (res.isSuccessful) {
+                                                        Toast.makeText(context, "Invitación cancelada", Toast.LENGTH_SHORT).show()
+                                                        refreshAll()
+                                                    }
+                                                } catch (e: Exception) {
+                                                    // ignore
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.Close, contentDescription = "Cancelar", tint = Color(0xFFEF4444))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // 5. Incoming Pending Invitations
+                if (incomingInvitations.isNotEmpty()) {
+                    Text(
+                        text = "INVITACIONES DE GRUPO RECIBIDAS",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GrayMuted,
+                        modifier = Modifier.align(Alignment.Start),
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    incomingInvitations.forEach { incoming ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = CardBgColor),
+                            border = BorderStroke(1.dp, TealPrimary)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Invitación de @${incoming.ownerUsername}",
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimaryColor
+                                    )
+                                    Text(
+                                        text = "Grupo de ${incoming.ownerName} (${incoming.planName})",
+                                        color = GrayMuted,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    IconButton(
+                                        onClick = {
+                                            scope.launch {
+                                                try {
+                                                    val api = ApiClient.getApiService(context)
+                                                    val res = api.acceptFamilyInvitation(incoming.publicInvitationId)
+                                                    if (res.isSuccessful) {
+                                                        Toast.makeText(context, "¡Aceptado con éxito!", Toast.LENGTH_SHORT).show()
+                                                        refreshAll()
+                                                    }
+                                                } catch (e: Exception) {
+                                                    // ignore
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.Check, contentDescription = "Aceptar", tint = Color(0xFF22C55E))
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            scope.launch {
+                                                try {
+                                                    val api = ApiClient.getApiService(context)
+                                                    val res = api.rejectFamilyInvitation(incoming.publicInvitationId)
+                                                    if (res.isSuccessful) {
+                                                        Toast.makeText(context, "Invitación rechazada", Toast.LENGTH_SHORT).show()
+                                                        refreshAll()
+                                                    }
+                                                } catch (e: Exception) {
+                                                    // ignore
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.Close, contentDescription = "Rechazar", tint = Color(0xFFEF4444))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+            } else {
+                // ================== TAB 1: PERMISOS Y SOS V2 ==================
+                Text(
+                    text = "CONFIGURACIÓN DE ACCESOS Y PRIORIDAD SOS",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = GrayMuted,
+                    modifier = Modifier.align(Alignment.Start),
+                    letterSpacing = 1.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (isLoadingAccess) {
+                    CircularProgressIndicator(color = TealPrimary)
+                } else if (accessList.isEmpty()) {
+                    Text("No tienes miembros activos configurados para permisos.", color = GrayMuted, fontSize = 13.sp)
+                } else {
+                    accessList.forEach { access ->
+                        // Determine the correct target ID and names
+                        val targetId = if (access.viewerPublicProfileId == myProfileId) access.subjectPublicProfileId else access.viewerPublicProfileId
+                        val targetUsername = if (access.viewerPublicProfileId == myProfileId) access.subjectUsername else access.viewerUsername
+                        val targetName = if (access.viewerPublicProfileId == myProfileId) access.subjectName else access.viewerName
+
+                        // Check if we already have local editing states for this membership
+                        var isSosContact by remember(access.publicRelationshipId) { mutableStateOf(access.isSosContact) }
+                        var sosPriority by remember(access.publicRelationshipId) { mutableStateOf(access.sosPriority ?: 0) }
+                        var viewLocation by remember(access.publicRelationshipId) { mutableStateOf(access.permissions.viewLocation) }
+                        var viewRoutes by remember(access.publicRelationshipId) { mutableStateOf(access.permissions.viewRoutes) }
+                        var viewTelemetry by remember(access.publicRelationshipId) { mutableStateOf(access.permissions.viewTelemetry) }
+                        var viewMedicalProfile by remember(access.publicRelationshipId) { mutableStateOf(access.permissions.viewMedicalProfile) }
+                        var isUpdatingAccess by remember { mutableStateOf(false) }
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 12.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = CardBgColor),
+                            border = BorderStroke(1.dp, GrayMuted.copy(alpha = 0.2f))
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(TealPrimary.copy(alpha = 0.2f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = targetName.take(2).uppercase(),
+                                            color = TealPrimary,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(targetName, fontWeight = FontWeight.Bold, color = TextPrimaryColor)
+                                        Text("@$targetUsername", color = GrayMuted, fontSize = 12.sp)
+                                    }
+                                }
+
+                                Divider(color = GrayMuted.copy(alpha = 0.15f), modifier = Modifier.padding(vertical = 12.dp))
+
+                                // SOS Contact Settings
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text("Contacto SOS", fontWeight = FontWeight.Bold, color = TextPrimaryColor, fontSize = 13.sp)
+                                        Text("Notificar a esta persona en incidentes", color = GrayMuted, fontSize = 11.sp)
+                                    }
+                                    Switch(
+                                        checked = isSosContact,
+                                        onCheckedChange = { isSosContact = it },
+                                        colors = SwitchDefaults.colors(checkedThumbColor = TealPrimary)
+                                    )
+                                }
+
+                                if (isSosContact) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text("Prioridad SOS: $sosPriority", fontWeight = FontWeight.Bold, color = TextPrimaryColor, fontSize = 13.sp)
+                                            Text("Orden de llamada en emergencia", color = GrayMuted, fontSize = 11.sp)
+                                        }
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            IconButton(
+                                                onClick = { if (sosPriority > 0) sosPriority-- },
+                                                modifier = Modifier.size(32.dp).background(CardElevatedColor, CircleShape)
+                                            ) {
+                                                Icon(Icons.Default.ArrowDownward, contentDescription = "Bajar", tint = TextPrimaryColor, modifier = Modifier.size(16.dp))
+                                            }
+                                            IconButton(
+                                                onClick = { sosPriority++ },
+                                                modifier = Modifier.size(32.dp).background(CardElevatedColor, CircleShape)
+                                            ) {
+                                                Icon(Icons.Default.ArrowUpward, contentDescription = "Subir", tint = TextPrimaryColor, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Divider(color = GrayMuted.copy(alpha = 0.15f), modifier = Modifier.padding(vertical = 12.dp))
+
+                                // Privacy & Monitoring Details
+                                Text("Permisos concedidos a este miembro:", fontWeight = FontWeight.Bold, color = TextPrimaryColor, fontSize = 12.sp)
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Permission checkboxes
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                    Checkbox(
+                                        checked = viewLocation,
+                                        onCheckedChange = { viewLocation = it },
+                                        colors = CheckboxDefaults.colors(checkedColor = TealPrimary)
+                                    )
+                                    Text("Ver ubicación en mapa", color = TextPrimaryColor, fontSize = 13.sp)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                    Checkbox(
+                                        checked = viewRoutes,
+                                        onCheckedChange = { viewRoutes = it },
+                                        colors = CheckboxDefaults.colors(checkedColor = TealPrimary)
+                                    )
+                                    Text("Ver rutas y trayectos", color = TextPrimaryColor, fontSize = 13.sp)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                    Checkbox(
+                                        checked = viewTelemetry,
+                                        onCheckedChange = { viewTelemetry = it },
+                                        colors = CheckboxDefaults.colors(checkedColor = TealPrimary)
+                                    )
+                                    Text("Ver telemetría (Ritmo Cardíaco / G-Force)", color = TextPrimaryColor, fontSize = 13.sp)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                    Checkbox(
+                                        checked = viewMedicalProfile,
+                                        onCheckedChange = { viewMedicalProfile = it },
+                                        colors = CheckboxDefaults.colors(checkedColor = TealPrimary)
+                                    )
+                                    Text("Ver Ficha Médica", color = TextPrimaryColor, fontSize = 13.sp)
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                Button(
+                                    onClick = {
+                                        isUpdatingAccess = true
+                                        scope.launch {
+                                            try {
+                                                val api = ApiClient.getApiService(context)
+                                                val res = api.updateFamilyMemberAccess(
+                                                    targetPublicProfileId = targetId,
+                                                    request = UpdateFamilyMemberAccessRequest(
+                                                        viewLocation = viewLocation,
+                                                        viewRoutes = viewRoutes,
+                                                        viewTelemetry = viewTelemetry,
+                                                        viewMedicalProfile = viewMedicalProfile,
+                                                        viewEmergencyLocation = true,
+                                                        viewIncidents = true,
+                                                        receiveCriticalAlerts = true,
+                                                        sendMessages = true,
+                                                        receiveNotifications = true,
+                                                        confirmMedicalConsent = true,
+                                                        sosPriority = if (isSosContact) sosPriority else null
+                                                    )
+                                                )
+                                                if (res.isSuccessful) {
+                                                    Toast.makeText(context, "Accesos de @$targetUsername actualizados!", Toast.LENGTH_SHORT).show()
+                                                    refreshAll()
+                                                } else {
+                                                    Toast.makeText(context, "Error al actualizar accesos: ${res.code()}", Toast.LENGTH_SHORT).show()
+                                                }
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Error de red al actualizar", Toast.LENGTH_SHORT).show()
+                                            } finally {
+                                                isUpdatingAccess = false
+                                            }
+                                        }
+                                    },
+                                    enabled = !isUpdatingAccess,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
+                                ) {
+                                    if (isUpdatingAccess) {
+                                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                                    } else {
+                                        Text("Guardar Accesos y Prioridad", color = Color.White)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
-    }
 
-    // --- Invitation Manual Code Dialog ---
-    if (showInvitationCodeDialog != null) {
-        val code = showInvitationCodeDialog!!
-        AlertDialog(
-            onDismissRequest = { showInvitationCodeDialog = null },
-            title = { Text("Código de Invitación", color = Color.White) },
-            text = {
-                Column {
-                    Text(
-                        text = "El código se mostrará una sola vez. Compártelo con tu monitor.",
-                        color = GrayMuted,
-                        fontSize = 13.sp
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF102238))
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+        // Show Manual Code copyable popup dialog
+        showManualCodeDialog?.let { code ->
+            AlertDialog(
+                onDismissRequest = { showManualCodeDialog = null },
+                title = { Text("Invitación Generada", color = TextPrimaryColor, fontWeight = FontWeight.Bold) },
+                text = {
+                    Column {
                         Text(
-                            text = code,
-                            color = TealPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            modifier = Modifier.weight(1f)
+                            text = "Código de un solo uso:",
+                            color = GrayMuted,
+                            fontSize = 13.sp
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "COPIAR",
-                            color = TealPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
                             modifier = Modifier
-                                .clickable {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    val clip = ClipData.newPlainText("ImpactX Manual Code", code)
-                                    clipboard.setPrimaryClip(clip)
-                                    Toast.makeText(context, "Código copiado", Toast.LENGTH_SHORT).show()
-                                }
-                                .padding(8.dp)
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = { showInvitationCodeDialog = null },
-                    colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
-                ) {
-                    Text("Cerrar", color = Color.White)
-                }
-            },
-            containerColor = Color(0xFF0C1929)
-        )
-    }
-
-    // --- SOS Contact Invitation Manual Code Dialog ---
-    if (showContactInvitationCodeDialog != null) {
-        val code = showContactInvitationCodeDialog!!
-        AlertDialog(
-            onDismissRequest = { showContactInvitationCodeDialog = null },
-            title = { Text("Código de Invitación SOS", color = Color.White) },
-            text = {
-                Column {
-                    Text(
-                        text = "El código se mostrará una sola vez. Compártelo con tu contacto de emergencia.",
-                        color = GrayMuted,
-                        fontSize = 13.sp
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF102238))
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = code,
-                            color = TealPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "COPIAR",
-                            color = TealPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            modifier = Modifier
-                                .clickable {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    val clip = ClipData.newPlainText("ImpactX SOS Manual Code", code)
-                                    clipboard.setPrimaryClip(clip)
-                                    Toast.makeText(context, "Código copiado", Toast.LENGTH_SHORT).show()
-                                }
-                                .padding(8.dp)
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = { showContactInvitationCodeDialog = null },
-                    colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
-                ) {
-                    Text("Cerrar", color = Color.White)
-                }
-            },
-            containerColor = Color(0xFF0C1929)
-        )
-    }
-
-    // --- Monitoring Relationship Detail Dialog (Accept/Reject/Options) ---
-    if (selectedRelationshipForDetail != null) {
-        val relation = selectedRelationshipForDetail!!
-        val isMyMonitor = relation.monitorPublicProfileId != myProfileId
-        val title = if (isMyMonitor) "Monitorea mi cuenta" else "Cuenta que monitoreo"
-        val userLabel = if (isMyMonitor) relation.monitorUsername else (relation.monitoredUsername ?: "Invitado")
-        val isRecipient = (relation.direction == "MonitorInvitesMonitored" && relation.monitoredPublicProfileId == myProfileId) ||
-                          (relation.direction == "MonitoredRequestsMonitor" && relation.monitorPublicProfileId == myProfileId)
-        
-        AlertDialog(
-            onDismissRequest = { selectedRelationshipForDetail = null },
-            title = { Text(text = if (relation.status.lowercase() == "pending") "Invitación de Monitoreo" else "Opciones de Monitoreo", color = Color.White) },
-            text = {
-                Column {
-                    Text(
-                        text = if (relation.status.lowercase() == "pending") {
-                            if (isRecipient) "Has recibido una invitación de monitoreo de @$userLabel para: $title."
-                            else "Invitación enviada a @$userLabel. Esperando confirmación."
-                        } else {
-                            "Conexión activa con @$userLabel ($title)."
-                        },
-                        color = Color.White,
-                        fontSize = 14.sp
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    if (relation.status.lowercase() == "pending") {
-                        if (isRecipient) {
-                            // Aceptar & Rechazar
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Button(
-                                    onClick = {
-                                        scope.launch {
-                                            try {
-                                                val api = ApiClient.getApiService(context)
-                                                val response = api.acceptMonitoringInvitation(
-                                                    AcceptMonitoringInvitationRequest(publicRelationshipId = relation.publicRelationshipId)
-                                                )
-                                                if (response.isSuccessful) {
-                                                    Toast.makeText(context, "Invitación aceptada", Toast.LENGTH_SHORT).show()
-                                                    selectedRelationshipForDetail = null
-                                                    refreshMonitors()
-                                                }
-                                            } catch (e: Exception) {
-                                                Toast.makeText(context, "Error al aceptar", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier.weight(1f).height(48.dp),
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
-                                ) {
-                                    Text("Aceptar", fontWeight = FontWeight.Bold)
-                                }
-                                
-                                OutlinedButton(
-                                    onClick = {
-                                        scope.launch {
-                                            try {
-                                                val api = ApiClient.getApiService(context)
-                                                val response = api.rejectMonitoringInvitation(
-                                                    RespondMonitoringInvitationRequest(publicRelationshipId = relation.publicRelationshipId)
-                                                )
-                                                if (response.isSuccessful) {
-                                                    Toast.makeText(context, "Invitación rechazada", Toast.LENGTH_SHORT).show()
-                                                    selectedRelationshipForDetail = null
-                                                    refreshMonitors()
-                                                }
-                                            } catch (e: Exception) {
-                                                Toast.makeText(context, "Error al rechazar", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier.weight(1f).height(48.dp),
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
-                                ) {
-                                    Text("Rechazar")
-                                }
-                            }
-                        } else {
-                            // Revocar
-                            Button(
-                                onClick = {
-                                    scope.launch {
-                                        try {
-                                            val api = ApiClient.getApiService(context)
-                                            val response = api.revokeMonitoringRelationship(relation.publicRelationshipId)
-                                            if (response.isSuccessful) {
-                                                Toast.makeText(context, "Invitación revocada", Toast.LENGTH_SHORT).show()
-                                                selectedRelationshipForDetail = null
-                                                refreshMonitors()
-                                            }
-                                        } catch (e: Exception) {
-                                            Toast.makeText(context, "Error al revocar", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth().height(48.dp),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
-                            ) {
-                                Text("Revocar Invitación", fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    } else {
-                        // Accepted Options: Ver monitoreo, Mensaje, Bloquear, Revocar
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(CardElevatedColor)
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Button(
+                            Text(
+                                text = code,
+                                color = TealPrimary,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 22.sp
+                            )
+                            IconButton(
                                 onClick = {
-                                    selectedRelationshipForDetail = null
-                                    Toast.makeText(context, "Mostrando mapa de monitoreo de @$userLabel...", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.fillMaxWidth().height(44.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    val clip = ClipData.newPlainText("Family Code", code)
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, "Copiado al portapapeles 📋", Toast.LENGTH_SHORT).show()
+                                }
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.RemoveRedEye, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Ver monitoreo", fontWeight = FontWeight.Bold)
-                                }
-                            }
-                            
-                            OutlinedButton(
-                                onClick = {
-                                    selectedRelationshipForDetail = null
-                                    onNavigateToMessages() // Go to messages!
-                                },
-                                modifier = Modifier.fillMaxWidth().height(44.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.ChatBubbleOutline, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Mensaje")
-                                }
-                            }
-                            
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = {
-                                        scope.launch {
-                                            try {
-                                                val api = ApiClient.getApiService(context)
-                                                val response = api.blockMonitoringRelationship(relation.publicRelationshipId)
-                                                if (response.isSuccessful) {
-                                                    Toast.makeText(context, "Usuario bloqueado", Toast.LENGTH_SHORT).show()
-                                                    selectedRelationshipForDetail = null
-                                                    refreshMonitors()
-                                                }
-                                            } catch (e: Exception) {
-                                                Toast.makeText(context, "Error al bloquear", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier.weight(1f).height(44.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFF59E0B)),
-                                    border = BorderStroke(1.dp, Color(0xFFF59E0B))
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.Block, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFFF59E0B))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Bloquear", fontSize = 12.sp)
-                                    }
-                                }
-                                
-                                Button(
-                                    onClick = {
-                                        scope.launch {
-                                            try {
-                                                val api = ApiClient.getApiService(context)
-                                                val response = api.revokeMonitoringRelationship(relation.publicRelationshipId)
-                                                if (response.isSuccessful) {
-                                                    Toast.makeText(context, "Relación revocada", Toast.LENGTH_SHORT).show()
-                                                    selectedRelationshipForDetail = null
-                                                    refreshMonitors()
-                                                }
-                                            } catch (e: Exception) {
-                                                Toast.makeText(context, "Error al revocar", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier.weight(1f).height(44.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Revocar", fontSize = 12.sp)
-                                    }
-                                }
+                                Icon(Icons.Default.ContentCopy, contentDescription = "Copiar", tint = TextPrimaryColor)
                             }
                         }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "Comparte este código con tu familiar para que pueda unirse directamente en su aplicación en 'Canjear Código'.",
+                            color = GrayMuted,
+                            fontSize = 12.sp
+                        )
                     }
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { selectedRelationshipForDetail = null }) {
-                    Text("Cerrar", color = TealPrimary)
-                }
-            },
-            containerColor = Color(0xFF0C1929)
-        )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { showManualCodeDialog = null },
+                        colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
+                    ) {
+                        Text("Aceptar", color = Color.White)
+                    }
+                },
+                containerColor = CardBgColor
+            )
+        }
     }
 }

@@ -1,5 +1,6 @@
 package com.example.impactx.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,6 +22,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import com.example.impactx.data.remote.ApiClient
+import com.example.impactx.data.remote.ActivateFamilySubscriptionRequest
+import com.example.impactx.data.remote.ChangeFamilyPlanRequest
+import com.example.impactx.data.remote.FamilySubscriptionSummaryDto
+import kotlinx.coroutines.launch
 
 @Composable
 fun PlansScreen(
@@ -29,15 +34,23 @@ fun PlansScreen(
     onPlanSelected: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    
     var freePrice by remember { mutableStateOf("0") }
     var basicPrice by remember { mutableStateOf("99") }
     var premiumPrice by remember { mutableStateOf("199") }
+    
     var showSuccessDialog by remember { mutableStateOf(false) }
     var selectedPlanForPurchase by remember { mutableStateOf("") }
+    
+    var activeFamilySub by remember { mutableStateOf<FamilySubscriptionSummaryDto?>(null) }
+    var isLoadingSub by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
         try {
             val api = ApiClient.getApiService(context)
+            
+            // Get plans pricing
             val response = api.getPlans()
             if (response.isSuccessful) {
                 val plans = response.body() ?: emptyList()
@@ -49,8 +62,27 @@ fun PlansScreen(
                     }
                 }
             }
+
+            // Get current family subscription V2
+            val subResponse = api.getFamilySubscription()
+            if (subResponse.isSuccessful) {
+                activeFamilySub = subResponse.body()
+            }
         } catch (e: Exception) {
             // keep fallback defaults on error
+        } finally {
+            isLoadingSub = false
+        }
+    }
+
+    // Determine the readable display name for current plan
+    val currentActivePlan = remember(activeFamilySub, currentPlan) {
+        val rawPlan = activeFamilySub?.planName ?: ""
+        when (rawPlan.lowercase()) {
+            "free" -> "Básico"
+            "basic" -> "Premium"
+            "premium" -> "Familiar Guardián"
+            else -> currentPlan
         }
     }
 
@@ -59,7 +91,7 @@ fun PlansScreen(
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(DarkBlue, Color(0xFF040D17))
+                    colors = listOf(DarkBlue, DarkBlueEnd)
                 )
             )
             .systemBarsPadding()
@@ -88,14 +120,14 @@ fun PlansScreen(
                     text = "Planes de Suscripción",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = TextPrimaryColor
                 )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = "Selecciona el plan que se adapte mejor a tus necesidades de seguridad. Los límites de vehículos y contactos se actualizarán de forma automática.",
+                text = "Selecciona el plan que se adapte mejor a tus necesidades de seguridad. Los límites de vehículos y contactos se actualizarán de forma automática en el sistema familiar.",
                 fontSize = 14.sp,
                 color = GrayMuted,
                 textAlign = TextAlign.Center,
@@ -104,75 +136,135 @@ fun PlansScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Plan 1: Básico
-            PlanCard(
-                name = "Básico",
-                price = "$$freePrice MXN",
-                period = "/ siempre gratis",
-                features = listOf(
-                    "✓ 3 Contactos de emergencia",
-                    "✓ 1 Monitor de emergencia",
-                    "✓ Monitoreo de velocidad básico",
-                    "✗ Mini-mapa en tiempo real",
-                    "✗ Botón de pánico SOS / Chat de choque"
-                ),
-                isActive = currentPlan == "Básico",
-                buttonText = "Plan Actual",
-                onSelect = {
-                    selectedPlanForPurchase = "Básico"
-                    showSuccessDialog = true
+            if (isLoadingSub) {
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = TealPrimary)
                 }
-            )
+            } else {
+                // Plan 1: Básico (Free)
+                PlanCard(
+                    name = "Básico",
+                    price = "$$freePrice MXN",
+                    period = "/ siempre gratis",
+                    features = listOf(
+                        "✓ 3 Contactos de emergencia",
+                        "✓ 1 Monitor de emergencia",
+                        "✓ Monitoreo de velocidad básico",
+                        "✗ Mini-mapa en tiempo real",
+                        "✗ Botón de pánico SOS / Chat de choque"
+                    ),
+                    isActive = currentActivePlan == "Básico",
+                    buttonText = "Plan Actual",
+                    onSelect = {
+                        selectedPlanForPurchase = "Básico"
+                        scope.launch {
+                            try {
+                                val api = ApiClient.getApiService(context)
+                                val response = if (activeFamilySub != null) {
+                                    api.changeFamilyPlan(ChangeFamilyPlanRequest(planName = "Free"))
+                                } else {
+                                    api.activateFamilySubscription(ActivateFamilySubscriptionRequest(planName = "Free"))
+                                }
+                                if (response.isSuccessful) {
+                                    activeFamilySub = response.body()
+                                    onPlanSelected("Básico")
+                                    showSuccessDialog = true
+                                } else {
+                                    Toast.makeText(context, "Error al actualizar plan: ${response.code()}", Toast.LENGTH_SHORT).show()
+                                }
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Error de red al actualizar plan", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                )
 
-            Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-            // Plan 2: Premium (Recommended)
-            PlanCard(
-                name = "Premium",
-                price = "$$basicPrice MXN",
-                period = "/ mes",
-                features = listOf(
-                    "✓ Hasta 10 Contactos de emergencia",
-                    "✓ Hasta 3 Monitores de emergencia",
-                    "✓ Mini-mapa en tiempo real (glowing map)",
-                    "✓ Botón de pánico SOS",
-                    "✓ Chat automático en caso de choque",
-                    "✓ Soporte de telemetría por G-Force"
-                ),
-                isActive = currentPlan == "Premium",
-                isRecommended = true,
-                buttonText = "Adquirir Premium",
-                onSelect = {
-                    selectedPlanForPurchase = "Premium"
-                    showSuccessDialog = true
-                }
-            )
+                // Plan 2: Premium (Basic)
+                PlanCard(
+                    name = "Premium",
+                    price = "$$basicPrice MXN",
+                    period = "/ mes",
+                    features = listOf(
+                        "✓ Hasta 10 Contactos de emergencia",
+                        "✓ Hasta 3 Monitores de emergencia",
+                        "✓ Mini-mapa en tiempo real (glowing map)",
+                        "✓ Botón de pánico SOS",
+                        "✓ Chat automático en caso de choque",
+                        "✓ Soporte de telemetría por G-Force"
+                    ),
+                    isActive = currentActivePlan == "Premium",
+                    isRecommended = true,
+                    buttonText = "Adquirir Premium",
+                    onSelect = {
+                        selectedPlanForPurchase = "Premium"
+                        scope.launch {
+                            try {
+                                val api = ApiClient.getApiService(context)
+                                val response = if (activeFamilySub != null) {
+                                    api.changeFamilyPlan(ChangeFamilyPlanRequest(planName = "Basic"))
+                                } else {
+                                    api.activateFamilySubscription(ActivateFamilySubscriptionRequest(planName = "Basic"))
+                                }
+                                if (response.isSuccessful) {
+                                    activeFamilySub = response.body()
+                                    onPlanSelected("Premium")
+                                    showSuccessDialog = true
+                                } else {
+                                    Toast.makeText(context, "Error al actualizar plan: ${response.code()}", Toast.LENGTH_SHORT).show()
+                                }
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Error de red al actualizar plan", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                )
 
-            Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-            // Plan 3: Familiar Guardián
-            PlanCard(
-                name = "Familiar Guardián",
-                price = "$$premiumPrice MXN",
-                period = "/ mes",
-                features = listOf(
-                    "✓ Contactos de emergencia ILIMITADOS",
-                    "✓ Monitores de emergencia ILIMITADOS",
-                    "✓ Mini-mapa en tiempo real (glowing map)",
-                    "✓ Botón de pánico SOS",
-                    "✓ Chat automático en caso de choque",
-                    "✓ Reportes de telemetría semanales",
-                    "✓ Soporte prioritario 24/7"
-                ),
-                isActive = currentPlan == "Familiar Guardián",
-                buttonText = "Adquirir Familiar",
-                onSelect = {
-                    selectedPlanForPurchase = "Familiar Guardián"
-                    showSuccessDialog = true
-                }
-            )
+                // Plan 3: Familiar Guardián (Premium)
+                PlanCard(
+                    name = "Familiar Guardián",
+                    price = "$$premiumPrice MXN",
+                    period = "/ mes",
+                    features = listOf(
+                        "✓ Contactos de emergencia ILIMITADOS",
+                        "✓ Monitores de emergencia ILIMITADOS",
+                        "✓ Mini-mapa en tiempo real (glowing map)",
+                        "✓ Botón de pánico SOS",
+                        "✓ Chat automático en caso de choque",
+                        "✓ Reportes de telemetría semanales",
+                        "✓ Soporte prioritario 24/7"
+                    ),
+                    isActive = currentActivePlan == "Familiar Guardián",
+                    buttonText = "Adquirir Familiar",
+                    onSelect = {
+                        selectedPlanForPurchase = "Familiar Guardián"
+                        scope.launch {
+                            try {
+                                val api = ApiClient.getApiService(context)
+                                val response = if (activeFamilySub != null) {
+                                    api.changeFamilyPlan(ChangeFamilyPlanRequest(planName = "Premium"))
+                                } else {
+                                    api.activateFamilySubscription(ActivateFamilySubscriptionRequest(planName = "Premium"))
+                                }
+                                if (response.isSuccessful) {
+                                    activeFamilySub = response.body()
+                                    onPlanSelected("Familiar Guardián")
+                                    showSuccessDialog = true
+                                } else {
+                                    Toast.makeText(context, "Error al actualizar plan: ${response.code()}", Toast.LENGTH_SHORT).show()
+                                }
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Error de red al actualizar plan", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                )
 
-            Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(24.dp))
+            }
         }
 
         // Purchase Success Dialog
@@ -183,19 +275,18 @@ fun PlansScreen(
                     Text(
                         text = "¡Suscripción Actualizada!",
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = TextPrimaryColor
                     )
                 },
                 text = {
                     Text(
-                        text = "Has seleccionado el plan '$selectedPlanForPurchase' con éxito.\n\n(Esta es una simulación de pago escolar. Los límites en vehículos, contactos y telemetría han sido actualizados en la app móvil).",
+                        text = "Has seleccionado el plan '$selectedPlanForPurchase' con éxito.\n\nLa suscripción V2 ha sido registrada en el servidor y tus límites han sido actualizados en tiempo real.",
                         color = GrayMuted
                     )
                 },
                 confirmButton = {
                     Button(
                         onClick = {
-                            onPlanSelected(selectedPlanForPurchase)
                             showSuccessDialog = false
                             onNavigateBack()
                         },
@@ -204,7 +295,7 @@ fun PlansScreen(
                         Text("Aceptar", color = Color.White)
                     }
                 },
-                containerColor = Color(0xFF102238)
+                containerColor = CardBgColor
             )
         }
     }
@@ -230,7 +321,7 @@ fun PlanCard(
             ),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isActive) Color(0xFF102A45) else Color(0xFF102238)
+            containerColor = if (isActive) CardElevatedColor else CardBgColor
         )
     ) {
         Column(
@@ -245,7 +336,7 @@ fun PlanCard(
                     text = name,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = TextPrimaryColor
                 )
                 if (isRecommended) {
                     Box(
@@ -286,7 +377,7 @@ fun PlanCard(
                     text = price,
                     fontSize = 28.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color = Color.White
+                    color = TextPrimaryColor
                 )
                 Text(
                     text = period,
@@ -298,7 +389,7 @@ fun PlanCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+            Divider(color = GrayMuted.copy(alpha = 0.2f))
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -308,7 +399,7 @@ fun PlanCard(
                     Text(
                         text = feature,
                         fontSize = 13.sp,
-                        color = if (isCrossed) Color.White.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.8f)
+                        color = if (isCrossed) GrayMuted else TextPrimaryColor.copy(alpha = 0.8f)
                     )
                 }
             }
@@ -323,11 +414,11 @@ fun PlanCard(
                         .height(48.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isRecommended) TealPrimary else Color(0xFF1B355A),
-                        contentColor = Color.White
+                        containerColor = if (isRecommended) TealPrimary else CardElevatedColor,
+                        contentColor = TextPrimaryColor
                     )
                 ) {
-                    Text(buttonText, fontWeight = FontWeight.Bold)
+                    Text(buttonText, fontWeight = FontWeight.Bold, color = Color.White)
                 }
             } else {
                 OutlinedButton(
@@ -345,3 +436,4 @@ fun PlanCard(
         }
     }
 }
+

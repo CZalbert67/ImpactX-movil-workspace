@@ -208,4 +208,76 @@ interface ApiService {
 
     @DELETE("api/v1/notifications")
     suspend fun deleteAllNotifications(): Response<Map<String, String>>
+
+    // ---- Family Subscriptions V2 ----
+    @GET("api/v1/family-subscriptions/current")
+    suspend fun getFamilySubscription(): Response<FamilySubscriptionSummaryDto>
+
+    @POST("api/v1/family-subscriptions/activate")
+    suspend fun activateFamilySubscription(
+        @Body request: ActivateFamilySubscriptionRequest
+    ): Response<FamilySubscriptionSummaryDto>
+
+    @POST("api/v1/family-subscriptions/change-plan")
+    suspend fun changeFamilyPlan(
+        @Body request: ChangeFamilyPlanRequest
+    ): Response<FamilySubscriptionSummaryDto>
+
+    @POST("api/v1/family-subscriptions/renew")
+    suspend fun renewFamilySubscription(): Response<FamilySubscriptionSummaryDto>
+
+    @POST("api/v1/family-subscriptions/cancel")
+    suspend fun cancelFamilySubscription(): Response<Unit>
+
+    @GET("api/v1/family-subscriptions/members")
+    suspend fun getFamilyMembers(): Response<List<FamilyMemberDto>>
+
+    @DELETE("api/v1/family-subscriptions/members/{publicMembershipId}")
+    suspend fun removeFamilyMember(
+        @Path("publicMembershipId") publicMembershipId: String
+    ): Response<Unit>
+
+    @POST("api/v1/family-subscriptions/leave")
+    suspend fun leaveFamilyGroup(): Response<Unit>
+
+    @GET("api/v1/family-subscriptions/members/access")
+    suspend fun getFamilyMembersAccess(): Response<List<FamilyMemberAccessDto>>
+
+    @PUT("api/v1/family-subscriptions/members/{targetPublicProfileId}/access")
+    suspend fun updateFamilyMemberAccess(
+        @Path("targetPublicProfileId") targetPublicProfileId: String,
+        @Body request: UpdateFamilyMemberAccessRequest
+    ): Response<FamilyMemberAccessDto>
+
+    @GET("api/v1/family-subscriptions/invitations")
+    suspend fun getFamilyInvitations(): Response<List<FamilyInvitationDto>>
+
+    @GET("api/v1/family-subscriptions/invitations/incoming")
+    suspend fun getIncomingFamilyInvitations(): Response<List<IncomingFamilyInvitationDto>>
+
+    @POST("api/v1/family-subscriptions/invitations")
+    suspend fun createFamilyInvitation(
+        @Body request: CreateFamilyInvitationRequest
+    ): Response<CreateFamilyInvitationResponse>
+
+    @POST("api/v1/family-subscriptions/invitations/{publicInvitationId}/accept")
+    suspend fun acceptFamilyInvitation(
+        @Path("publicInvitationId") publicInvitationId: String
+    ): Response<Unit>
+
+    @POST("api/v1/family-subscriptions/invitations/{publicInvitationId}/reject")
+    suspend fun rejectFamilyInvitation(
+        @Path("publicInvitationId") publicInvitationId: String
+    ): Response<Unit>
+
+    @DELETE("api/v1/family-subscriptions/invitations/{publicInvitationId}")
+    suspend fun revokeFamilyInvitation(
+        @Path("publicInvitationId") publicInvitationId: String
+    ): Response<Unit>
+
+    @POST("api/v1/family-subscriptions/invitations/redeem")
+    suspend fun redeemFamilyInvitation(
+        @Body request: RedeemFamilyInvitationRequest
+    ): Response<Unit>
 }
+

@@ -32,6 +32,7 @@ class MainActivity : ComponentActivity() {
     private var sensorService by mutableStateOf<SensorService?>(null)
     private var isServiceRunning by mutableStateOf(false)
     private var isBound by mutableStateOf(false)
+    private var triggerAlarmState by mutableStateOf(false)
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -63,6 +64,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         checkAndRequestPermissions()
 
+        triggerAlarmState = intent?.getBooleanExtra("TRIGGER_ALARM", false) ?: false
+
         // Prevent screen sleep and turn screen on for emergency alerts
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
@@ -92,7 +95,7 @@ class MainActivity : ComponentActivity() {
                         val impactDetected by service.impactDetected.collectAsState()
                         val isTripActive by service.isTripActive.collectAsState()
 
-                        val triggerAlarmFromIntent = intent?.getBooleanExtra("TRIGGER_ALARM", false) ?: false
+                        val triggerAlarmFromIntent = triggerAlarmState
                         if (triggerAlarmFromIntent && !impactDetected) {
                             service.sendSignalToPhone("/impact-detected", "CRITICAL_IMPACT")
                         }
@@ -100,6 +103,7 @@ class MainActivity : ComponentActivity() {
                         if (impactDetected || triggerAlarmFromIntent) {
                             WearAlertScreen(
                                 onCancel = {
+                                    triggerAlarmState = false
                                     intent?.removeExtra("TRIGGER_ALARM")
                                     service.resetAlarm()
                                 },
@@ -157,6 +161,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        triggerAlarmState = intent.getBooleanExtra("TRIGGER_ALARM", false)
     }
 
     private fun checkAndRequestPermissions() {
@@ -183,9 +188,9 @@ class MainActivity : ComponentActivity() {
                 isBound = false
             }
             stopService(intent)
+            sensorService?.setTripActive(false)
             isServiceRunning = false
             sensorService = null
-            isTripActive = false
         } else {
             startForegroundService(intent)
             bindService(intent, connection, Context.BIND_AUTO_CREATE)
