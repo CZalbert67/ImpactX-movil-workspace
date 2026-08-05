@@ -22,6 +22,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 class WearableMessageListenerService : WearableListenerService() {
@@ -86,18 +87,20 @@ class WearableMessageListenerService : WearableListenerService() {
 
                 Log.w("WearSync", "IMPACT received. Saving locally! G=$gForce, HR=$heartRate, GPS=$lat,$lng, Time=$timestamp")
 
-                // Insert into SQLite database
+                // Insert into SQLite database in background thread
                 val db = AppDatabase.getDatabase(applicationContext)
-                db.accidentDao().insertAccident(
-                    AccidentEntity(
-                        heartRate = heartRate,
-                        gForce = gForce,
-                        timestamp = timestamp,
-                        lat = lat,
-                        lng = lng,
-                        sent = false
+                withContext(Dispatchers.IO) {
+                    db.accidentDao().insertAccident(
+                        AccidentEntity(
+                            heartRate,
+                            gForce,
+                            timestamp,
+                            lat,
+                            lng,
+                            false
+                        )
                     )
-                )
+                }
 
                 // Signal UI to navigate to MandarDatosScreen
                 WearableManager.triggerEmergencyNav = true
