@@ -43,7 +43,8 @@ fun HomeScreen(
     onNavigateToWearableSync: () -> Unit,
     onNavigateToMessages: () -> Unit,
     onNavigateToProfile: () -> Unit,
-    onNavigateToMandarDatos: () -> Unit
+    onNavigateToMandarDatos: () -> Unit,
+    onLogout: () -> Unit
 ) {
     // Pulse animation for the active shield
     val infiniteTransition = rememberInfiniteTransition(label = "shieldPulse")
@@ -182,7 +183,8 @@ fun HomeScreen(
                         Triple("Sincronizar Reloj", Icons.Default.Refresh, { scope.launch { drawerState.close() }; onNavigateToWearableSync() }),
                         Triple("Mandar Datos", Icons.Default.ArrowUpward, { scope.launch { drawerState.close() }; onNavigateToMandarDatos() }),
                         Triple("Mis Planes", Icons.Default.Star, { scope.launch { drawerState.close() }; onNavigateToPlans() }),
-                        Triple("Mi Perfil", Icons.Default.Person, { scope.launch { drawerState.close() }; onNavigateToProfile() })
+                        Triple("Mi Perfil", Icons.Default.Person, { scope.launch { drawerState.close() }; onNavigateToProfile() }),
+                        Triple("Cerrar Sesión", Icons.Default.ExitToApp, { scope.launch { drawerState.close() }; onLogout() })
                     )
 
                     Column(

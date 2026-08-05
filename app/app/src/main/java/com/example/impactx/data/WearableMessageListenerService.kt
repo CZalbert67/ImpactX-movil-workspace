@@ -102,6 +102,21 @@ class WearableMessageListenerService : WearableListenerService() {
                     )
                 }
 
+                // If there's an active trip, automatically finish it since an accident occurred
+                val prefs = applicationContext.getSharedPreferences("impactx_prefs", Context.MODE_PRIVATE)
+                val tripId = prefs.getString("active_trip_id", null) ?: WearableManager.activeWearTripId
+                if (tripId != null) {
+                    try {
+                        val api = ApiClient.getApiService(applicationContext)
+                        api.finishTrip(tripId)
+                        prefs.edit().remove("active_trip_id").apply()
+                        WearableManager.activeWearTripId = null
+                        Log.i("WearSync", "Trip $tripId automatically finished on impact SOS.")
+                    } catch (ex: Exception) {
+                        Log.e("WearSync", "Failed to auto-finish trip: ${ex.message}")
+                    }
+                }
+
                 // Signal UI to navigate to MandarDatosScreen
                 WearableManager.triggerEmergencyNav = true
 
@@ -192,6 +207,11 @@ class WearableMessageListenerService : WearableListenerService() {
                 if (response.isSuccessful) {
                     val trip = response.body()
                     WearableManager.activeWearTripId = trip?.id
+                    
+                    // Persist active trip ID
+                    val prefs = applicationContext.getSharedPreferences("impactx_prefs", Context.MODE_PRIVATE)
+                    prefs.edit().putString("active_trip_id", trip?.id).apply()
+                    
                     Log.i("WearSync", "Trip started! TripId=${trip?.id}")
                 } else {
                     Log.e("WearSync", "Trip start API error: ${response.code()} ${response.message()}")
@@ -204,11 +224,18 @@ class WearableMessageListenerService : WearableListenerService() {
 
     // ─── Trip Finish ─────────────────────────────────────────────────────────
     private fun handleFinishTrip() {
-        val tripId = WearableManager.activeWearTripId ?: return
+        val prefs = applicationContext.getSharedPreferences("impactx_prefs", Context.MODE_PRIVATE)
+        val tripId = prefs.getString("active_trip_id", null) ?: WearableManager.activeWearTripId
+        if (tripId == null) {
+            Log.w("WearSync", "No active trip ID found to finish.")
+            return
+        }
+        
         scope.launch {
             try {
                 val api = ApiClient.getApiService(applicationContext)
                 api.finishTrip(tripId)
+                prefs.edit().remove("active_trip_id").apply()
                 WearableManager.activeWearTripId = null
                 Log.i("WearSync", "Trip $tripId finished from watch.")
             } catch (e: Exception) {

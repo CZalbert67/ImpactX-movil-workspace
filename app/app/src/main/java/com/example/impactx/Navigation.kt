@@ -44,15 +44,34 @@ fun MainNavigation() {
     onBack = { backStack.removeLastOrNull() },
     entryProvider =
       entryProvider {
+        val performLogout = {
+          coroutineScope.launch {
+            val db = AppDatabase.getDatabase(context)
+            val session = withContext(Dispatchers.IO) { db.sessionDao().session }
+            if (session != null) {
+              try {
+                val apiService = ApiClient.getApiService(context)
+                apiService.logout("Bearer ${session.accessToken}")
+              } catch (e: Exception) {
+                // Safe ignore network error on logout
+              }
+            }
+            withContext(Dispatchers.IO) { db.sessionDao().clearSession() }
+            backStack.clear()
+            backStack.add(Welcome)
+          }
+        }
+
         entry<Splash> {
           SplashScreen(
             onTimeout = { hasSession, sessionUsername, sessionPlan ->
-              backStack.removeLastOrNull() // remove Splash
               if (hasSession) {
                 userName = sessionUsername
                 activePlan = sessionPlan
+                backStack.clear()
                 backStack.add(Home)
               } else {
+                backStack.clear()
                 backStack.add(Welcome)
               }
             }
@@ -69,6 +88,7 @@ fun MainNavigation() {
             onNavigateBack = { backStack.removeLastOrNull() },
             onLoginSuccess = { loggedInName ->
               userName = loggedInName
+              backStack.clear()
               backStack.add(Home)
             },
             onNavigateToRegister = { backStack.add(Register) }
@@ -79,6 +99,7 @@ fun MainNavigation() {
             onNavigateBack = { backStack.removeLastOrNull() },
             onRegisterSuccess = { registeredName ->
               userName = registeredName
+              backStack.clear()
               backStack.add(Home)
             },
             onNavigateToLogin = { backStack.add(Login) }
@@ -97,7 +118,8 @@ fun MainNavigation() {
             onNavigateToWearableSync = { backStack.add(WearableSync) },
             onNavigateToMessages = { backStack.add(Messages) },
             onNavigateToProfile = { backStack.add(Profile) },
-            onNavigateToMandarDatos = { backStack.add(MandarDatos) }
+            onNavigateToMandarDatos = { backStack.add(MandarDatos) },
+            onLogout = { performLogout() }
           )
         }
         entry<Medical> {
@@ -157,24 +179,7 @@ fun MainNavigation() {
             currentPlan = activePlan,
             onUserNameChange = { userName = it },
             onNavigateBack = { backStack.removeLastOrNull() },
-            onLogout = {
-              coroutineScope.launch {
-                val db = AppDatabase.getDatabase(context)
-                val session = withContext(Dispatchers.IO) { db.sessionDao().session }
-                if (session != null) {
-                  try {
-                    val apiService = ApiClient.getApiService(context)
-                    apiService.logout("Bearer ${session.accessToken}")
-                  } catch (e: Exception) {
-                    // Safe ignore network error on logout
-                  }
-                }
-                withContext(Dispatchers.IO) { db.sessionDao().clearSession() }
-                backStack.removeLastOrNull() // remove Profile
-                backStack.removeLastOrNull() // remove Home
-                backStack.add(Welcome)
-              }
-            }
+            onLogout = { performLogout() }
           )
         }
         entry<MandarDatos> {

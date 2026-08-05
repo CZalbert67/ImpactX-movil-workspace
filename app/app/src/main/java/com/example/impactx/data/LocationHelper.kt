@@ -22,7 +22,15 @@ object LocationHelper {
             suspendCancellableCoroutine { continuation ->
                 fusedClient.lastLocation
                     .addOnSuccessListener { location ->
-                        continuation.resume(location)
+                        if (location != null) {
+                            continuation.resume(location)
+                        } else {
+                            // Fallback to legacy LocationManager
+                            val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                            val gps = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                            val network = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                            continuation.resume(gps ?: network)
+                        }
                     }
                     .addOnFailureListener {
                         // Fallback to legacy LocationManager
