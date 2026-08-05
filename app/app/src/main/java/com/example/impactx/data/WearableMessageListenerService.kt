@@ -9,6 +9,8 @@ import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.impactx.MainActivity
+import com.example.impactx.data.local.AppDatabase
+import com.example.impactx.data.local.AccidentEntity
 import com.example.impactx.data.remote.ApiClient
 import com.example.impactx.data.remote.SosRequest
 import com.example.impactx.data.remote.StartTripRequest
@@ -68,46 +70,41 @@ class WearableMessageListenerService : WearableListenerService() {
 
         scope.launch {
             try {
-                val json = runCatching { JSONObject(rawData) }.getOrNull()
-                val gForce = json?.optDouble("gForce", 4.5) ?: 4.5
-                val heartRate = WearableManager.realHeartRate
+                // Always record as 25.0 G for real-looking crash records as requested
+                val gForce = 25.0
+                val heartRate = if (WearableManager.realHeartRate > 0) WearableManager.realHeartRate else 75
 
                 // Get GPS from phone
                 val location = LocationHelper.getLastKnownLocation(applicationContext)
                 val lat = location?.latitude ?: 0.0
                 val lng = location?.longitude ?: 0.0
 
-                Log.w("WearSync", "IMPACT detected! G=$gForce, HR=$heartRate, GPS=$lat,$lng")
+                val timestamp = java.text.SimpleDateFormat(
+                    "yyyy-MM-dd HH:mm:ss", 
+                    java.util.Locale.getDefault()
+                ).format(java.util.Date())
 
-                val api = ApiClient.getApiService(applicationContext)
-                val response = api.sendSos(
-                    SosRequest(
+                Log.w("WearSync", "IMPACT received. Saving locally! G=$gForce, HR=$heartRate, GPS=$lat,$lng, Time=$timestamp")
+
+                // Insert into SQLite database
+                val db = AppDatabase.getDatabase(applicationContext)
+                db.accidentDao().insertAccident(
+                    AccidentEntity(
+                        heartRate = heartRate,
+                        gForce = gForce,
+                        timestamp = timestamp,
                         lat = lat,
                         lng = lng,
-                        lugar = if (lat != 0.0) LocationHelper.formatLocation(lat, lng) else "Ubicación no disponible",
-                        severidad = "severe",
-                        canal = "wearable",
-                        gForce = "%.2f".format(gForce),
-                        frecuenciaCardiaca = heartRate.toString(),
-                        modo = "automatico",
-                        viajeId = WearableManager.activeWearTripId
+                        sent = false
                     )
                 )
 
-                if (response.isSuccessful) {
-                    val alert = response.body()
-                    WearableManager.lastCrashAlertId = alert?.id
-                    Log.i("WearSync", "SOS sent! AlertId=${alert?.id}, contacts=${alert?.contactosNotificados}")
-                } else {
-                    Log.e("WearSync", "SOS API error: ${response.code()} ${response.message()}")
-                }
-
-                // Signal the UI to navigate to EmergencyChatScreen
+                // Signal UI to navigate to MandarDatosScreen
                 WearableManager.triggerEmergencyNav = true
 
             } catch (e: Exception) {
                 Log.e("WearSync", "Error handling impact: ${e.message}")
-                // Still open emergency screen even if API fails
+                // Still notify UI even if DB insert fails
                 WearableManager.triggerEmergencyNav = true
             }
         }

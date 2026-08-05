@@ -42,7 +42,8 @@ fun HomeScreen(
     onNavigateToPlans: () -> Unit,
     onNavigateToWearableSync: () -> Unit,
     onNavigateToMessages: () -> Unit,
-    onNavigateToProfile: () -> Unit
+    onNavigateToProfile: () -> Unit,
+    onNavigateToMandarDatos: () -> Unit
 ) {
     // Pulse animation for the active shield
     val infiniteTransition = rememberInfiniteTransition(label = "shieldPulse")
@@ -179,6 +180,7 @@ fun HomeScreen(
                         Triple("Contactos y SOS", Icons.Default.Share, { scope.launch { drawerState.close() }; onNavigateToContacts() }),
                         Triple("Mensajes Rápidos", Icons.Default.Send, { scope.launch { drawerState.close() }; onNavigateToMessages() }),
                         Triple("Sincronizar Reloj", Icons.Default.Refresh, { scope.launch { drawerState.close() }; onNavigateToWearableSync() }),
+                        Triple("Mandar Datos", Icons.Default.ArrowUpward, { scope.launch { drawerState.close() }; onNavigateToMandarDatos() }),
                         Triple("Mis Planes", Icons.Default.Star, { scope.launch { drawerState.close() }; onNavigateToPlans() }),
                         Triple("Mi Perfil", Icons.Default.Person, { scope.launch { drawerState.close() }; onNavigateToProfile() })
                     )
@@ -325,7 +327,7 @@ fun HomeScreen(
                     }
                 }
 
-                val isConnected = WearableManager.bleState == BLEState.CONNECTED_DASHBOARD
+                val isConnected = WearableManager.isRealConnection || WearableManager.bleState == BLEState.CONNECTED_DASHBOARD
                 
                 val infiniteTransitionCard = rememberInfiniteTransition(label = "heartPulseCard")
                 val heartScaleCard by infiniteTransitionCard.animateFloat(
@@ -377,7 +379,7 @@ fun HomeScreen(
                                         .background(if (isConnected) Color(0xFF22C55E) else TealPrimary)
                                 )
                                 Text(
-                                    text = if (isConnected) "VINCULADO" else "DESCONECTADO",
+                                    text = if (isConnected) "DISPOSITIVO CONECTADO" else "DISPOSITIVO DESCONECTADO",
                                     fontSize = 9.sp,
                                     color = if (isConnected) Color(0xFF22C55E) else TealPrimary,
                                     fontWeight = FontWeight.Bold

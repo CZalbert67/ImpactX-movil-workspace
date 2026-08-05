@@ -29,7 +29,7 @@ fun WearAlertScreen(
     onTimeout: () -> Unit
 ) {
     val context = LocalContext.current
-    var secondsLeft by remember { mutableStateOf(15) }
+    var secondsLeft by remember { mutableStateOf(0) }
     var sosSent by remember { mutableStateOf(false) }
     
     // Warning background blinking animation

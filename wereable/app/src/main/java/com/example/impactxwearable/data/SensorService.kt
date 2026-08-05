@@ -135,7 +135,7 @@ class SensorService : Service(), SensorEventListener {
                     _maxGForce.value = magnitude
                 }
 
-                // Crash detection threshold (> 8.0G) - reduced sensitivity to avoid false alarms
+                // Crash detection threshold (> 8.0G) - sensitive to agitating/shaking for testing
                 if (magnitude > 8.0f && !_impactDetected.value) {
                     triggerImpactAlert()
                 }
@@ -163,7 +163,7 @@ class SensorService : Service(), SensorEventListener {
 
     private fun triggerImpactAlert() {
         _impactDetected.value = true
-        sendSignalToPhone("/impact-detected", "CRITICAL_IMPACT")
+        sendSignalToPhone("/sos-triggered", "CRITICAL_SOS")
         
         // 1. Wake physical screen using WakeLock
         try {

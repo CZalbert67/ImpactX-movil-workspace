@@ -5,9 +5,10 @@ import androidx.room.Database;
 import androidx.room.Room;
 import androidx.room.RoomDatabase;
 
-@Database(entities = {SessionEntity.class}, version = 1, exportSchema = false)
+@Database(entities = {SessionEntity.class, AccidentEntity.class}, version = 2, exportSchema = false)
 public abstract class AppDatabase extends RoomDatabase {
     public abstract SessionDao sessionDao();
+    public abstract AccidentDao accidentDao();
 
     private static volatile AppDatabase INSTANCE;
 
@@ -19,7 +20,9 @@ public abstract class AppDatabase extends RoomDatabase {
                         context.getApplicationContext(),
                         AppDatabase.class,
                         "impactx_db"
-                    ).build();
+                    )
+                    .fallbackToDestructiveMigration()
+                    .build();
                 }
             }
         }

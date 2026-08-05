@@ -32,9 +32,9 @@ fun MainNavigation() {
   LaunchedEffect(emergencyTrigger) {
     if (emergencyTrigger) {
       WearableManager.triggerEmergencyNav = false
-      // Navigate to emergency chat if not already there
-      if (backStack.lastOrNull() !is EmergencyChat) {
-        backStack.add(EmergencyChat)
+      // Navigate to MandarDatos if not already there
+      if (backStack.lastOrNull() !is MandarDatos) {
+        backStack.add(MandarDatos)
       }
     }
   }
@@ -96,7 +96,8 @@ fun MainNavigation() {
             onNavigateToPlans = { backStack.add(Plans) },
             onNavigateToWearableSync = { backStack.add(WearableSync) },
             onNavigateToMessages = { backStack.add(Messages) },
-            onNavigateToProfile = { backStack.add(Profile) }
+            onNavigateToProfile = { backStack.add(Profile) },
+            onNavigateToMandarDatos = { backStack.add(MandarDatos) }
           )
         }
         entry<Medical> {
@@ -173,6 +174,15 @@ fun MainNavigation() {
                 backStack.removeLastOrNull() // remove Home
                 backStack.add(Welcome)
               }
+            }
+          )
+        }
+        entry<MandarDatos> {
+          MandarDatosScreen(
+            onNavigateBack = { backStack.removeLastOrNull() },
+            onTriggerSos = {
+              // Replace Splash or Home if needed, but here we just add EmergencyChat
+              backStack.add(EmergencyChat)
             }
           )
         }

@@ -17,3 +17,4 @@ import kotlinx.serialization.Serializable
 @Serializable data object WearableSync : NavKey
 @Serializable data object Messages : NavKey
 @Serializable data object Profile : NavKey
+@Serializable data object MandarDatos : NavKey
