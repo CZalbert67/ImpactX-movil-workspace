@@ -168,9 +168,6 @@ class MainActivity : ComponentActivity() {
                                         put("action", "FINISH_TRIP")
                                     }.toString()
                                     service.sendSignalToPhone("/finish-trip", payload)
-                                    service.setTripActive(false)
-                                    service._tripSyncState.value = SensorService.TripSyncState.IDLE
-                                    Toast.makeText(this, "Viaje finalizado", Toast.LENGTH_SHORT).show()
                                 }
                             )
                         }

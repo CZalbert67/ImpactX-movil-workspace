@@ -59,6 +59,15 @@ class SensorService : Service(), SensorEventListener {
     /** The eventId of the pending START_TRIP sent but not yet confirmed. */
     @Volatile var pendingTripEventId: String? = null
 
+    // Message listener for /trip-confirmed responses from the phone
+    private val messageListener = com.google.android.gms.wearable.MessageClient.OnMessageReceivedListener { messageEvent ->
+        if (messageEvent.path == "/trip-confirmed") {
+            val payload = String(messageEvent.data)
+            Log.i("WearSync", "Confirmación de viaje recibida del celular: $payload")
+            receiveTripConfirmation(payload)
+        }
+    }
+
     fun setTripActive(active: Boolean) {
         // Legacy helper — use tripSyncState for new UI code
         _isTripActive.value = active
@@ -66,18 +75,24 @@ class SensorService : Service(), SensorEventListener {
 
     /**
      * Called when the phone replies on /trip-confirmed.
-     * Updates the state machine: STARTING → ACTIVE or ERROR.
+     * Updates the state machine: STARTING → ACTIVE or ERROR, and FINISHING → IDLE or ERROR.
      */
     fun receiveTripConfirmation(payloadJson: String) {
         val json = runCatching { org.json.JSONObject(payloadJson) }.getOrNull() ?: return
         val success = json.optBoolean("success", false)
-        val tripId = json.optString("tripId", "")
-        if (success && tripId.isNotBlank()) {
-            _tripSyncState.value = TripSyncState.ACTIVE
-            _isTripActive.value = true
+        val status = json.optString("status", "")
+        
+        if (success) {
+            if (status == "Finalizado") {
+                _tripSyncState.value = TripSyncState.IDLE
+                _isTripActive.value = false
+            } else {
+                _tripSyncState.value = TripSyncState.ACTIVE
+                _isTripActive.value = true
+            }
         } else {
             _tripSyncState.value = TripSyncState.ERROR
-            _isTripActive.value = false
+            // Keep current trip state active if finish failed, or inactive if start failed
         }
     }
 
@@ -125,6 +140,9 @@ class SensorService : Service(), SensorEventListener {
         registerSensors()
         checkPhoneConnection()
         startTelemetryLoop()
+
+        // Register message listener to receive /trip-confirmed from phone
+        Wearable.getMessageClient(this).addListener(messageListener)
     }
 
     private fun registerSensors() {
@@ -399,6 +417,8 @@ class SensorService : Service(), SensorEventListener {
         wakeLock?.let {
             if (it.isHeld) it.release()
         }
+        // Unregister message listener
+        Wearable.getMessageClient(this).removeListener(messageListener)
         super.onDestroy()
     }
 

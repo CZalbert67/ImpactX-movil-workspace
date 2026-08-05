@@ -11,6 +11,14 @@ public abstract class AppDatabase extends RoomDatabase {
     public abstract AccidentDao accidentDao();
     public abstract WearSyncEventDao wearSyncEventDao();
 
+    private static final androidx.room.migration.Migration MIGRATION_2_3 = new androidx.room.migration.Migration(2, 3) {
+        @Override
+        public void migrate(@androidx.annotation.NonNull androidx.sqlite.db.SupportSQLiteDatabase database) {
+            database.execSQL("CREATE TABLE IF NOT EXISTS `wear_sync_events` (`rowId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `eventId` TEXT, `eventType` TEXT, `status` TEXT, `createdAtUtc` TEXT, `updatedAtUtc` TEXT, `backendEntityId` TEXT, `httpCode` INTEGER NOT NULL, `errorMessage` TEXT)");
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_wear_sync_events_eventId` ON `wear_sync_events` (`eventId`)");
+        }
+    };
+
     private static volatile AppDatabase INSTANCE;
 
     public static AppDatabase getDatabase(final Context context) {
@@ -22,7 +30,7 @@ public abstract class AppDatabase extends RoomDatabase {
                         AppDatabase.class,
                         "impactx_db"
                     )
-                    .fallbackToDestructiveMigration()
+                    .addMigrations(MIGRATION_2_3)
                     .build();
                 }
             }

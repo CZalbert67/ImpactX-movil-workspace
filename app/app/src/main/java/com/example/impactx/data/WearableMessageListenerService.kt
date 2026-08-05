@@ -484,17 +484,27 @@ class WearableMessageListenerService : WearableListenerService() {
                         dao.updateStatus(eventId, "SUCCEEDED", httpCode, tripId, nowUtcString())
                     }
                     Log.i("WearSync", "[FINISH_TRIP] Viaje $tripId finalizado correctamente.")
+                    
+                    val confirm = JSONObject().apply {
+                        put("eventId", eventId)
+                        put("success", true)
+                        put("tripId", tripId)
+                        put("status", "Finalizado")
+                    }
+                    sendConfirmationToNode(sourceNodeId, "/trip-confirmed", confirm)
                 } else {
                     withContext(Dispatchers.IO) {
                         dao.updateFailure(eventId, "FAILED", httpCode, "Error finalizando viaje HTTP $httpCode", nowUtcString())
                     }
                     Log.e("WearSync", "[FINISH_TRIP] Error HTTP $httpCode finalizando viaje $tripId")
+                    sendErrorConfirmation(sourceNodeId, eventId, httpCode, "No se pudo finalizar el viaje en el servidor.")
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.IO) {
                     dao.updateFailure(eventId, "FAILED", 0, e.message ?: "Error de red", nowUtcString())
                 }
                 Log.e("WearSync", "[FINISH_TRIP] Excepción: ${e.message}")
+                sendErrorConfirmation(sourceNodeId, eventId, 0, "Error de red al finalizar viaje.")
             }
         }
     }
