@@ -84,7 +84,7 @@ class SensorService : Service(), SensorEventListener {
     // ── Unified impact coordinator ────────────────────────────────────────────
     // Guarantees exactly ONE impactEventId per physical event regardless of
     // how many sensors (accelerometer, gyroscope) fire simultaneously.
-    @Volatile private var impactEventId: String? = null
+    @Volatile internal var impactEventId: String? = null
     @Volatile private var lastImpactMs: Long = 0
     private val IMPACT_COOLDOWN_MS = 15_000L
 
