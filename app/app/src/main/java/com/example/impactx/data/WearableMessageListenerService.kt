@@ -113,7 +113,6 @@ class WearableMessageListenerService : WearableListenerService() {
             put("errorCode", errorCode)
             put("message", message)
         }
-        sendConfirmationToNode(targetNodeId, "/trip-confirmed", error)
         sendConfirmationToNode(targetNodeId, "/trip-failed", error)
     }
 
@@ -129,9 +128,11 @@ class WearableMessageListenerService : WearableListenerService() {
     private fun handleDeviceInfo(rawData: String, sourceNodeId: String) {
         val json = runCatching { JSONObject(rawData) }.getOrNull() ?: return
         val installationId = json.optString("installationId", "").takeIf { it.isNotBlank() }
-        val deviceName    = json.optString("deviceName", "Galaxy Watch8")
-        val model         = json.optString("model", "SM-L330")
-        val manufacturer  = json.optString("manufacturer", "Samsung")
+        val deviceName    = json.optString("deviceName", WearableContract.DEVICE_NAME)
+        val reportedModel = json.optString("model", json.optString("hardwareModel", "SM-L330"))
+        val hardwareModel = json.optString("hardwareModel", reportedModel)
+        val model         = WearableContract.canonicalModel(reportedModel)
+        val manufacturer  = WearableContract.MANUFACTURER
         val appVersion    = json.optString("appVersion", null)
         val osVersion     = json.optString("versionSistemaOperativo", null)
 
@@ -140,7 +141,8 @@ class WearableMessageListenerService : WearableListenerService() {
             return
         }
 
-        Log.i(TAG, "DEVICE_INFO_RECEIVED sourceNodeId=$sourceNodeId installationId=${installationId.take(8)}...")
+        Log.i(TAG, "DEVICE_INFO_RECEIVED sourceNodeId=$sourceNodeId " +
+            "installationId=${installationId.take(8)}... hardwareModel=$hardwareModel contractModel=$model")
 
         scope.launch {
             val db = AppDatabase.getDatabase(applicationContext)
@@ -156,7 +158,10 @@ class WearableMessageListenerService : WearableListenerService() {
                 linkageDao.getLinkageByInstallationId(installationId)
             }
 
-            if (existingByInstallation != null && !existingByInstallation.backendDeviceId.isNullOrBlank()) {
+            if (existingByInstallation != null &&
+                !existingByInstallation.backendDeviceId.isNullOrBlank() &&
+                WearableManager.backendLinked &&
+                WearableManager.backendDeviceId == existingByInstallation.backendDeviceId) {
                 // Device already linked. Update nodeId if it changed (e.g. after reboot).
                 if (existingByInstallation.nodeId != sourceNodeId) {
                     Log.i(TAG, "NODE_ID_UPDATED installationId=${installationId.take(8)} "
@@ -181,7 +186,10 @@ class WearableMessageListenerService : WearableListenerService() {
             val existingByNode = withContext(Dispatchers.IO) {
                 linkageDao.getLinkageByNodeId(sourceNodeId)
             }
-            if (existingByNode != null && !existingByNode.backendDeviceId.isNullOrBlank()) {
+            if (existingByNode != null &&
+                !existingByNode.backendDeviceId.isNullOrBlank() &&
+                WearableManager.backendLinked &&
+                WearableManager.backendDeviceId == existingByNode.backendDeviceId) {
                 // Update the installationId on existing record
                 val updated = WearableLinkageEntity(
                     sourceNodeId,
@@ -213,8 +221,28 @@ class WearableMessageListenerService : WearableListenerService() {
                         // Backend already has a wearable for this user — save the linkage
                         val wearableDto = getResp.body()!!
                         val backendDeviceId = wearableDto.dispositivoId
-                        if (backendDeviceId.isNullOrBlank()) {
-                            Log.e(TAG, "PAIRING_ERROR GET returned empty dispositivoId")
+                        if (backendDeviceId.isBlank() ||
+                            !wearableDto.estado.equals("Vinculado", ignoreCase = true) ||
+                            !WearableContract.isSupported(
+                                wearableDto.fabricante,
+                                wearableDto.modelo,
+                                wearableDto.plataforma
+                            )) {
+                            val detail = "El wearable registrado no cumple el contrato Galaxy Watch8 vinculado."
+                            WearableManager.backendLinked = false
+                            WearableManager.backendDeviceId = null
+                            WearableManager.pairingError = detail
+                            Log.e(TAG, "PAIRING_ERROR_INVALID_BACKEND_WEARABLE " +
+                                "estado=${wearableDto.estado} modelo=${wearableDto.modelo}")
+                            sendConfirmationToNode(
+                                sourceNodeId,
+                                "/pairing-failed",
+                                JSONObject().apply {
+                                    put("success", false)
+                                    put("errorCode", "INVALID_BACKEND_WEARABLE")
+                                    put("message", detail)
+                                }
+                            )
                             return@launch
                         }
                         val linkage = WearableLinkageEntity(
@@ -269,8 +297,11 @@ class WearableMessageListenerService : WearableListenerService() {
 
                             if (confirmResp.isSuccessful && confirmResp.body() != null) {
                                 val backendDeviceId = confirmResp.body()!!.dispositivoId
-                                if (backendDeviceId.isNullOrBlank()) {
-                                    Log.e(TAG, "PAIRING_ERROR confirm returned empty dispositivoId")
+                                if (backendDeviceId.isBlank()) {
+                                    reportPairingFailure(
+                                        sourceNodeId, confirmResp.code(), "EMPTY_DEVICE_ID",
+                                        "El backend confirmó la vinculación sin devolver dispositivoId."
+                                    )
                                     return@launch
                                 }
                                 val linkage = WearableLinkageEntity(
@@ -300,7 +331,10 @@ class WearableMessageListenerService : WearableListenerService() {
                                     Log.e(TAG, "LINKAGE_VERIFICATION_FAILED after pair+confirm")
                                 }
                             } else {
-                                Log.e(TAG, "PAIR_CONFIRM_FAILED HTTP=${confirmResp.code()}")
+                                val detail = runCatching {
+                                    JSONObject(confirmResp.errorBody()?.string()).optString("detail")
+                                }.getOrDefault("No se pudo confirmar la vinculación.")
+                                reportPairingFailure(sourceNodeId, confirmResp.code(), "PAIR_CONFIRM_FAILED", detail)
                             }
                         } else if (pairResp.code() == 409) {
                             // Already registered — recover by calling GET again
@@ -321,26 +355,53 @@ class WearableMessageListenerService : WearableListenerService() {
                             }
                         } else {
                             val errBody = pairResp.errorBody()?.string()
-                            val detail = runCatching { JSONObject(errBody).optString("detail") }.getOrElse { "HTTP ${pairResp.code()}" }
-                            Log.e(TAG, "PAIR_FAILED HTTP=${pairResp.code()} detail=$detail")
+                            val detail = runCatching { JSONObject(errBody).optString("detail") }
+                                .getOrElse { "No se pudo registrar el Galaxy Watch8." }
+                            reportPairingFailure(sourceNodeId, pairResp.code(), "PAIR_FAILED", detail)
                         }
                     }
                     getResp.code() == 401 -> {
-                        Log.e(TAG, "GET_WEARABLE_UNAUTHORIZED Session expired")
-                        WearableManager.backendLinked = false
-                        WearableManager.pairingError = "Sesión vencida. Inicia sesión en el celular."
+                        reportPairingFailure(
+                            sourceNodeId, 401, "UNAUTHORIZED",
+                            "Sesión vencida. Inicia sesión en el celular."
+                        )
                     }
                     else -> {
                         val detail = runCatching {
                             JSONObject(getResp.errorBody()?.string()).optString("detail")
                         }.getOrElse { "HTTP ${getResp.code()}" }
-                        Log.e(TAG, "GET_WEARABLE_FAILED HTTP=${getResp.code()} detail=$detail")
+                        reportPairingFailure(sourceNodeId, getResp.code(), "GET_WEARABLE_FAILED", detail)
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "PAIRING_EXCEPTION msg=${e.message}")
+                reportPairingFailure(
+                    sourceNodeId, 0, "PAIRING_EXCEPTION",
+                    e.message ?: "Error de red durante la vinculación."
+                )
             }
         }
+    }
+
+    private suspend fun reportPairingFailure(
+        sourceNodeId: String,
+        httpCode: Int,
+        errorCode: String,
+        message: String
+    ) {
+        WearableManager.backendLinked = false
+        WearableManager.backendDeviceId = null
+        WearableManager.pairingError = message
+        Log.e(TAG, "PAIRING_FAILED HTTP=$httpCode errorCode=$errorCode detail=$message")
+        sendConfirmationToNode(
+            sourceNodeId,
+            "/pairing-failed",
+            JSONObject().apply {
+                put("success", false)
+                put("httpCode", httpCode)
+                put("errorCode", errorCode)
+                put("message", message)
+            }
+        )
     }
 
     private fun updateWearableManagerLinked(sourceNodeId: String, backendDeviceId: String, deviceName: String) {
@@ -391,11 +452,9 @@ class WearableMessageListenerService : WearableListenerService() {
     // ─── /device-info resolution helper for trip commands ───────────────────
     /**
      * Resolves backendDeviceId for incoming trip commands.
-     * Priority:
-     *   1. Room lookup by sourceNodeId
-     *   2. Room lookup by installationId (if provided in message)
-     *   3. Live GET /api/v1/wearable (recovery path)
-     * NEVER invents or hardcodes an ID.
+     * The current authenticated user's backend wearable is authoritative.
+     * Room is refreshed from that response so stale linkages from a previous
+     * account cannot be relayed. NEVER invents or hardcodes an ID.
      */
     private suspend fun resolveDispositivoId(
         sourceNodeId: String,
@@ -403,54 +462,66 @@ class WearableMessageListenerService : WearableListenerService() {
         db: AppDatabase,
         api: com.example.impactx.data.remote.ApiService
     ): String? {
-        // 1. By nodeId
-        val byNode = withContext(Dispatchers.IO) {
-            db.wearableLinkageDao().getLinkageByNodeId(sourceNodeId)
-        }
-        if (!byNode?.backendDeviceId.isNullOrBlank()) {
-            return byNode!!.backendDeviceId
-        }
+        // /device-info and /start-trip travel independently through Data Layer.
+        // Retry briefly so an in-flight pair+confirm can finish before rejecting
+        // the trip. Every attempt still verifies the current authenticated user.
+        repeat(6) { attempt ->
+            try {
+                val getResp = api.getWearable()
+                Log.i(TAG, "GET_WEARABLE_FOR_TRIP attempt=${attempt + 1} HTTP=${getResp.code()}")
 
-        // 2. By installationId (nodeId may have changed)
-        if (!installationId.isNullOrBlank()) {
-            val byInstall = withContext(Dispatchers.IO) {
-                db.wearableLinkageDao().getLinkageByInstallationId(installationId)
-            }
-            if (!byInstall?.backendDeviceId.isNullOrBlank()) {
-                // Update nodeId to current
-                Log.i(TAG, "RESOLVE_BY_INSTALLATION installationId=${installationId.take(8)} updating nodeId=$sourceNodeId")
-                withContext(Dispatchers.IO) {
-                    db.wearableLinkageDao().updateNodeIdForInstallation(
-                        installationId, sourceNodeId, System.currentTimeMillis()
-                    )
-                }
-                return byInstall!!.backendDeviceId
-            }
-        }
-
-        // 3. Live backend lookup (recovery)
-        try {
-            val getResp = api.getWearable()
-            Log.i(TAG, "GET_WEARABLE HTTP=${getResp.code()}")
-            if (getResp.isSuccessful && getResp.body() != null) {
-                val body = getResp.body()!!
-                val devId = body.dispositivoId
-                if (!devId.isNullOrBlank()) {
-                    withContext(Dispatchers.IO) {
-                        db.wearableLinkageDao().insertLinkage(
-                            WearableLinkageEntity(
-                                sourceNodeId, installationId ?: "", devId,
-                                body.nombre, body.modelo, body.fabricante,
-                                body.estado, System.currentTimeMillis()
-                            )
-                        )
+                if (getResp.isSuccessful && getResp.body() != null) {
+                    val body = getResp.body()!!
+                    if (body.dispositivoId.isBlank() ||
+                        !body.estado.equals("Vinculado", ignoreCase = true) ||
+                        !WearableContract.isSupported(body.fabricante, body.modelo, body.plataforma)) {
+                        Log.e(TAG, "RESOLVE_INVALID_BACKEND_WEARABLE " +
+                            "estado=${body.estado} modelo=${body.modelo}")
+                        return null
                     }
-                    return devId
+
+                    val linkage = WearableLinkageEntity(
+                        sourceNodeId,
+                        installationId ?: "",
+                        body.dispositivoId,
+                        body.nombre,
+                        WearableContract.MODEL,
+                        WearableContract.MANUFACTURER,
+                        "Vinculado",
+                        System.currentTimeMillis()
+                    )
+                    withContext(Dispatchers.IO) {
+                        db.wearableLinkageDao().insertLinkage(linkage)
+                    }
+                    updateWearableManagerLinked(
+                        sourceNodeId,
+                        body.dispositivoId,
+                        body.nombre.ifBlank { WearableContract.DEVICE_NAME }
+                    )
+                    Log.i(TAG, "TRIP_LINKAGE_READY nodeId=$sourceNodeId " +
+                        "installationId=${installationId?.take(8)} backendDeviceId=${body.dispositivoId.take(8)}")
+                    return body.dispositivoId
                 }
+
+                if (getResp.code() != 404) {
+                    val detail = runCatching {
+                        JSONObject(getResp.errorBody()?.string()).optString("detail")
+                    }.getOrDefault("HTTP ${getResp.code()}")
+                    Log.e(TAG, "RESOLVE_BACKEND_FAILED HTTP=${getResp.code()} detail=$detail")
+                    return null
+                }
+
+                if (attempt < 5) {
+                    Log.i(TAG, "TRIP_LINKAGE_WAITING_FOR_PAIR attempt=${attempt + 1}")
+                    kotlinx.coroutines.delay(750)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "RESOLVE_BACKEND_ERROR msg=${e.message}")
+                return null
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "RESOLVE_BACKEND_ERROR msg=${e.message}")
         }
+
+        Log.w(TAG, "RESOLVE_NO_BACKEND_WEARABLE nodeId=$sourceNodeId")
         return null
     }
 
@@ -502,23 +573,13 @@ class WearableMessageListenerService : WearableListenerService() {
                     dao.updateStatus(eventId, "SUCCEEDED", 200, "", nowUtcString())
                 }
 
-                // If there's an active trip, automatically close it
+                // A collision/alert must not silently finish the trip. The trip lifecycle
+                // remains controlled by the wearable so its state, the phone and the backend
+                // cannot diverge after an impact simulation.
                 val prefs  = applicationContext.getSharedPreferences("impactx_prefs", Context.MODE_PRIVATE)
                 val tripId = prefs.getString("active_trip_id", null) ?: WearableManager.activeWearTripId
                 if (tripId != null) {
-                    try {
-                        val api = ApiClient.getApiService(applicationContext)
-                        val finishResp = api.finishTrip(tripId)
-                        if (finishResp.isSuccessful) {
-                            prefs.edit().remove("active_trip_id").apply()
-                            WearableManager.activeWearTripId = null
-                            Log.i(TAG, "TRIP_AUTO_FINISHED tripId=${tripId.take(8)} by $action")
-                        } else {
-                            Log.e(TAG, "TRIP_AUTO_FINISH_FAILED tripId=${tripId.take(8)} HTTP=${finishResp.code()}")
-                        }
-                    } catch (ex: Exception) {
-                        Log.e(TAG, "TRIP_AUTO_FINISH_EXCEPTION msg=${ex.message}")
-                    }
+                    Log.i(TAG, "IMPACT_RECORDED_TRIP_CONTINUES tripId=${tripId.take(8)} action=$action")
                 }
 
                 WearableManager.triggerEmergencyNav = true
@@ -611,7 +672,7 @@ class WearableMessageListenerService : WearableListenerService() {
                 return@launch
             }
 
-            withContext(Dispatchers.IO) {
+            val inserted = withContext(Dispatchers.IO) {
                 dao.insertEventIfAbsent(WearSyncEventEntity().apply {
                     this.eventId = eventId
                     this.sourceNodeId = sourceNodeId
@@ -621,6 +682,10 @@ class WearableMessageListenerService : WearableListenerService() {
                     this.updatedAt = nowUtcString()
                     this.httpCode = 0
                 })
+            }
+            if (inserted == -1L) {
+                Log.w(TAG, "START_TRIP_RACE_DEDUPED eventId=${eventId.take(8)}")
+                return@launch
             }
 
             try {
@@ -808,8 +873,12 @@ class WearableMessageListenerService : WearableListenerService() {
                 return@launch
             }
 
-            withContext(Dispatchers.IO) {
+            val inserted = withContext(Dispatchers.IO) {
                 dao.insertEventIfAbsent(pendingEvent(eventId, "PAUSE_TRIP", sourceNodeId))
+            }
+            if (inserted == -1L) {
+                Log.w(TAG, "PAUSE_TRIP_RACE_DEDUPED eventId=${eventId.take(8)}")
+                return@launch
             }
 
             try {
@@ -882,8 +951,12 @@ class WearableMessageListenerService : WearableListenerService() {
                 return@launch
             }
 
-            withContext(Dispatchers.IO) {
+            val inserted = withContext(Dispatchers.IO) {
                 dao.insertEventIfAbsent(pendingEvent(eventId, "RESUME_TRIP", sourceNodeId))
+            }
+            if (inserted == -1L) {
+                Log.w(TAG, "RESUME_TRIP_RACE_DEDUPED eventId=${eventId.take(8)}")
+                return@launch
             }
 
             try {
@@ -956,8 +1029,12 @@ class WearableMessageListenerService : WearableListenerService() {
                 return@launch
             }
 
-            withContext(Dispatchers.IO) {
+            val inserted = withContext(Dispatchers.IO) {
                 dao.insertEventIfAbsent(pendingEvent(eventId, "FINISH_TRIP", sourceNodeId))
+            }
+            if (inserted == -1L) {
+                Log.w(TAG, "FINISH_TRIP_RACE_DEDUPED eventId=${eventId.take(8)}")
+                return@launch
             }
 
             Log.i(TAG, "FINISH_TRIP tripId=${tripId.take(8)} eventId=${eventId.take(8)}")
@@ -985,9 +1062,32 @@ class WearableMessageListenerService : WearableListenerService() {
                     val detail = runCatching {
                         JSONObject(response.errorBody()?.string()).optString("detail")
                     }.getOrElse { "HTTP $httpCode" }
-                    Log.e(TAG, "FINISH_TRIP_FAILED eventId=${eventId.take(8)} HTTP=$httpCode detail=$detail")
-                    withContext(Dispatchers.IO) { dao.updateFailure(eventId, "FAILED", httpCode, detail, nowUtcString()) }
-                    sendErrorConfirmation(sourceNodeId, eventId, httpCode, "No se pudo finalizar el viaje en el servidor.", "FINISH_FAILED")
+
+                    // Idempotent recovery for trips that were already finalized by an older
+                    // mobile build during the collision flow. Treat that backend state as a
+                    // successful finish so the wearable can clear its stale local trip state.
+                    val alreadyFinished = httpCode == 409 &&
+                        detail.contains("finalizado", ignoreCase = true)
+
+                    if (alreadyFinished) {
+                        val prefs = applicationContext.getSharedPreferences("impactx_prefs", Context.MODE_PRIVATE)
+                        prefs.edit().remove("active_trip_id").apply()
+                        WearableManager.activeWearTripId = null
+                        withContext(Dispatchers.IO) {
+                            dao.updateStatus(eventId, "SUCCEEDED", httpCode, tripId, nowUtcString())
+                        }
+                        Log.i(TAG, "FINISH_TRIP_ALREADY_FINISHED eventId=${eventId.take(8)} tripId=${tripId.take(8)}")
+                        val confirm = JSONObject().apply {
+                            put("eventId", eventId); put("success", true)
+                            put("httpCode", httpCode); put("tripId", tripId)
+                            put("status", "Finalizado"); put("message", "El viaje ya estaba finalizado.")
+                        }
+                        sendConfirmationToNode(sourceNodeId, "/trip-confirmed", confirm)
+                    } else {
+                        Log.e(TAG, "FINISH_TRIP_FAILED eventId=${eventId.take(8)} HTTP=$httpCode detail=$detail")
+                        withContext(Dispatchers.IO) { dao.updateFailure(eventId, "FAILED", httpCode, detail, nowUtcString()) }
+                        sendErrorConfirmation(sourceNodeId, eventId, httpCode, "No se pudo finalizar el viaje en el servidor.", "FINISH_FAILED")
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "FINISH_TRIP_EXCEPTION eventId=${eventId.take(8)} msg=${e.message}")
