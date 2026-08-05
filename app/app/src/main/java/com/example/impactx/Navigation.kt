@@ -65,13 +65,17 @@ fun MainNavigation() {
         entry<Splash> {
           SplashScreen(
             onTimeout = { hasSession, sessionUsername, sessionPlan ->
-              if (hasSession) {
+              val prefs = context.getSharedPreferences("impactx_prefs", android.content.Context.MODE_PRIVATE)
+              val onboardingCompleted = prefs.getBoolean("onboarding_completed", false)
+
+              backStack.clear()
+              if (!onboardingCompleted) {
+                backStack.add(Onboarding)
+              } else if (hasSession) {
                 userName = sessionUsername
                 activePlan = sessionPlan
-                backStack.clear()
                 backStack.add(Home)
               } else {
-                backStack.clear()
                 backStack.add(Welcome)
               }
             }
@@ -188,6 +192,14 @@ fun MainNavigation() {
             onTriggerSos = {
               // Replace Splash or Home if needed, but here we just add EmergencyChat
               backStack.add(EmergencyChat)
+            }
+          )
+        }
+        entry<Onboarding> {
+          OnboardingScreen(
+            onFinishOnboarding = {
+              backStack.clear()
+              backStack.add(Welcome)
             }
           )
         }
