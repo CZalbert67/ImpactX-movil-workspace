@@ -45,15 +45,16 @@ object WearableIdentity {
         val installationId = getOrCreateInstallationId(context)
         val timestampUtc = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
         val osVersion = Build.VERSION.RELEASE
-        val buildModel = Build.MODEL
-        val manufacturer = Build.MANUFACTURER
+        val hardwareModel = Build.MODEL
+        val contractModel = WearableContract.canonicalModel(hardwareModel)
 
         return org.json.JSONObject().apply {
             put("installationId", installationId)
-            put("model", buildModel)
-            put("deviceName", buildModel)
-            put("manufacturer", manufacturer)
-            put("platform", "WearOS")
+            put("model", contractModel)
+            put("hardwareModel", hardwareModel)
+            put("deviceName", WearableContract.DEVICE_NAME)
+            put("manufacturer", WearableContract.MANUFACTURER)
+            put("platform", WearableContract.PLATFORM)
             put("appVersion", appVersion)
             put("versionSistemaOperativo", osVersion)
             put("timestampUtc", timestampUtc)

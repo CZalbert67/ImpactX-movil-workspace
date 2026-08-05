@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.*
 import com.example.impactx.data.remote.*
 import kotlinx.coroutines.launch
 import android.widget.Toast
+import android.content.Context
 
 @Composable
 fun HomeScreen(
@@ -102,7 +103,16 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) {
         refreshNotifications()
+        val savedTripId = context
+            .getSharedPreferences("impactx_prefs", Context.MODE_PRIVATE)
+            .getString("active_trip_id", null)
+        if (!savedTripId.isNullOrBlank()) {
+            WearableManager.activeWearTripId = savedTripId
+        }
     }
+
+    val activeTripId = WearableManager.activeWearTripId
+    val isTripActive = !activeTripId.isNullOrBlank()
 
     // Initials helper
     val initials = remember(userName) {
@@ -332,6 +342,7 @@ fun HomeScreen(
                 }
 
                 val isConnected = WearableManager.isRealConnection || WearableManager.bleState == BLEState.CONNECTED_DASHBOARD
+                val isBackendLinked = WearableManager.backendLinked && !WearableManager.backendDeviceId.isNullOrBlank()
                 
                 val infiniteTransitionCard = rememberInfiniteTransition(label = "heartPulseCard")
                 val heartScaleCard by infiniteTransitionCard.animateFloat(
@@ -383,9 +394,14 @@ fun HomeScreen(
                                         .background(if (isConnected) Color(0xFF22C55E) else TealPrimary)
                                 )
                                 Text(
-                                    text = if (isConnected) "DISPOSITIVO CONECTADO" else "DISPOSITIVO DESCONECTADO",
+                                    text = when {
+                                        isTripActive -> "VIAJE ACTIVO"
+                                        isBackendLinked -> "VINCULADO CON IMPACTX"
+                                        isConnected -> "CONECTADO · VINCULANDO"
+                                        else -> "DISPOSITIVO DESCONECTADO"
+                                    },
                                     fontSize = 9.sp,
-                                    color = if (isConnected) Color(0xFF22C55E) else TealPrimary,
+                                    color = if (isConnected || isTripActive) Color(0xFF22C55E) else TealPrimary,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -428,9 +444,13 @@ fun HomeScreen(
                                 color = TextPrimaryColor
                             )
                             Text(
-                                text = "Presiona para administrar la conexión y ver telemetría completa.",
+                                text = when {
+                                    isBackendLinked -> "Vinculación confirmada. Presiona para ver la telemetría."
+                                    !WearableManager.pairingError.isNullOrBlank() -> WearableManager.pairingError!!
+                                    else -> "Conexión detectada. Esperando confirmación con ImpactX..."
+                                },
                                 fontSize = 11.sp,
-                                color = TextSecondaryColor
+                                color = if (WearableManager.pairingError.isNullOrBlank()) TextSecondaryColor else Color(0xFFEF5350)
                             )
                         } else {
                             Text(
@@ -479,13 +499,13 @@ fun HomeScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(
                                 imageVector = Icons.Default.Lock,
-                                contentDescription = "Protección activa",
+                                contentDescription = if (isTripActive) "Viaje activo" else "Protección activa",
                                 tint = Color.White,
                                 modifier = Modifier.size(42.dp)
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "PROTEGIDO",
+                                text = if (isTripActive) "EN VIAJE" else "PROTEGIDO",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White,
@@ -518,7 +538,7 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
-                    text = "Monitoreo de colisión en segundo plano activo.",
+                    text = if (isTripActive) "Viaje activo sincronizado con ImpactX." else "Monitoreo de colisión en segundo plano activo.",
                     color = TextPrimaryColor,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -526,7 +546,11 @@ fun HomeScreen(
                     textAlign = TextAlign.Center
                 )
                 Text(
-                    text = "El viaje se inicia manualmente desde tu Galaxy Watch8. La app sincroniza el estado con el backend ImpactX.",
+                    text = if (isTripActive) {
+                        "El viaje iniciado desde el Galaxy Watch8 ya está registrado. ID: ${activeTripId?.take(8)}…"
+                    } else {
+                        "El viaje se inicia manualmente desde tu Galaxy Watch8. La app sincroniza el estado con el backend ImpactX."
+                    },
                     color = TextSecondaryColor,
                     fontSize = 11.sp,
                     modifier = Modifier

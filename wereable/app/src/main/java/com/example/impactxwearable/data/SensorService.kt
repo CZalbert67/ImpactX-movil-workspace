@@ -8,6 +8,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
@@ -68,8 +69,11 @@ class SensorService : Service(), SensorEventListener {
     private val _tripErrorMessage = MutableStateFlow<String?>(null)
     val tripErrorMessage = _tripErrorMessage.asStateFlow()
 
-    /** The eventId of the pending START_TRIP sent but not yet confirmed. */
-    @Volatile var pendingTripEventId: String? = null
+    /** Event currently awaiting an ACK from the phone/backend relay. */
+    @Volatile private var pendingTripEventId: String? = null
+
+    /** Action associated with [pendingTripEventId]. Used to reject stale ACKs. */
+    @Volatile private var pendingTripAction: String? = null
 
     /** The backend tripId of the currently active trip. Persisted in prefs. */
     @Volatile var activeTripId: String? = null
@@ -100,16 +104,20 @@ class SensorService : Service(), SensorEventListener {
 
     /**
      * Called when the phone replies on /trip-confirmed or /trip-failed.
-     * Updates the state machine: STARTING → ACTIVE or ERROR, and FINISHING → IDLE or ERROR.
+     * Only the ACK matching the single pending event may change local state.
      */
+    @Synchronized
     fun receiveTripConfirmation(payloadJson: String) {
-        val json = runCatching { org.json.JSONObject(payloadJson) }.getOrNull() ?: return
+        val json = runCatching { JSONObject(payloadJson) }.getOrNull() ?: return
         val incomingEventId = json.optString("eventId", "")
+        val pendingEventId = pendingTripEventId
 
-        // Ignore ACKs for events we didn't send (stale replies)
-        if (incomingEventId.isNotBlank() && pendingTripEventId != null &&
-            incomingEventId != pendingTripEventId) {
-            Log.w("WearSync", "ACK_IGNORED incomingEventId=${incomingEventId.take(8)} pendingEventId=${pendingTripEventId?.take(8)}")
+        if (incomingEventId.isBlank() || pendingEventId.isNullOrBlank()) {
+            Log.w(TAG, "ACK_IGNORED no pending event incomingEventId=${incomingEventId.take(8)}")
+            return
+        }
+        if (incomingEventId != pendingEventId) {
+            Log.w(TAG, "ACK_IGNORED incomingEventId=${incomingEventId.take(8)} pendingEventId=${pendingEventId.take(8)}")
             return
         }
 
@@ -117,18 +125,22 @@ class SensorService : Service(), SensorEventListener {
         val status = json.optString("status", "")
         val tripId = json.optString("tripId", "").takeIf { it.isNotBlank() }
         val message = json.optString("message", "")
-        
+        val action = pendingTripAction
+
+        // The event reached a terminal ACK; a later response for the same event is stale.
+        pendingTripEventId = null
+        pendingTripAction = null
+
         if (success) {
             _tripErrorMessage.value = null
             when {
-                status == "Finalizado" -> {
+                status.equals("Finalizado", ignoreCase = true) || action == ACTION_FINISH -> {
                     persistActiveTripId(null)
                     persistTripState("IDLE")
-                    pendingTripEventId = null
                     _tripSyncState.value = TripState.IDLE
                     _isTripActive.value = false
                 }
-                status == "Pausado" -> {
+                status.equals("Pausado", ignoreCase = true) || action == ACTION_PAUSE -> {
                     if (tripId != null) persistActiveTripId(tripId)
                     persistTripState("PAUSED")
                     _tripSyncState.value = TripState.PAUSED
@@ -137,19 +149,17 @@ class SensorService : Service(), SensorEventListener {
                 else -> {
                     if (tripId != null) persistActiveTripId(tripId)
                     persistTripState("ACTIVE")
-                    pendingTripEventId = null
                     _tripSyncState.value = TripState.ACTIVE
                     _isTripActive.value = true
                 }
             }
-            Log.i("WearSync", "TRIP_ACK_OK eventId=${incomingEventId.take(8)} status=$status tripId=${tripId?.take(8)}")
+            Log.i(TAG, "TRIP_ACK_OK eventId=${incomingEventId.take(8)} action=$action status=$status tripId=${tripId?.take(8)}")
         } else {
             val finalMsg = if (message.isNotBlank()) message else "Error en el viaje"
             _tripErrorMessage.value = finalMsg
             _tripSyncState.value = TripState.ERROR
-            Log.e("WearSync", "TRIP_ACK_FAILED eventId=${incomingEventId.take(8)} message=$finalMsg")
-            
-            // Safely show Toast on main thread
+            Log.e(TAG, "TRIP_ACK_FAILED eventId=${incomingEventId.take(8)} action=$action message=$finalMsg")
+
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 android.widget.Toast.makeText(
                     applicationContext,
@@ -158,6 +168,77 @@ class SensorService : Service(), SensorEventListener {
                 ).show()
             }
         }
+    }
+
+    /**
+     * Atomic trip commands. State changes before sending so repeated taps cannot
+     * create additional event IDs while Compose is waiting to recompose.
+     */
+    @Synchronized
+    fun requestStartTrip(): Boolean {
+        if (pendingTripEventId != null ||
+            _tripSyncState.value !in setOf(TripState.IDLE, TripState.ERROR) ||
+            activeTripId != null) {
+            Log.w(TAG, "TRIP_COMMAND_IGNORED action=$ACTION_START state=${_tripSyncState.value} pending=${pendingTripEventId?.take(8)}")
+            return false
+        }
+        return enqueueTripCommand(ACTION_START, "/start-trip", TripState.STARTING, null)
+    }
+
+    @Synchronized
+    fun requestPauseTrip(): Boolean {
+        val tripId = activeTripId
+        if (pendingTripEventId != null || _tripSyncState.value != TripState.ACTIVE || tripId.isNullOrBlank()) {
+            Log.w(TAG, "TRIP_COMMAND_IGNORED action=$ACTION_PAUSE state=${_tripSyncState.value} pending=${pendingTripEventId?.take(8)}")
+            return false
+        }
+        return enqueueTripCommand(ACTION_PAUSE, "/pause-trip", TripState.PAUSING, tripId)
+    }
+
+    @Synchronized
+    fun requestResumeTrip(): Boolean {
+        val tripId = activeTripId
+        if (pendingTripEventId != null || _tripSyncState.value != TripState.PAUSED || tripId.isNullOrBlank()) {
+            Log.w(TAG, "TRIP_COMMAND_IGNORED action=$ACTION_RESUME state=${_tripSyncState.value} pending=${pendingTripEventId?.take(8)}")
+            return false
+        }
+        return enqueueTripCommand(ACTION_RESUME, "/resume-trip", TripState.RESUMING, tripId)
+    }
+
+    @Synchronized
+    fun requestFinishTrip(): Boolean {
+        val tripId = activeTripId
+        val canFinish = _tripSyncState.value in setOf(TripState.ACTIVE, TripState.PAUSED, TripState.ERROR)
+        if (pendingTripEventId != null || !canFinish || tripId.isNullOrBlank()) {
+            Log.w(TAG, "TRIP_COMMAND_IGNORED action=$ACTION_FINISH state=${_tripSyncState.value} pending=${pendingTripEventId?.take(8)}")
+            return false
+        }
+        return enqueueTripCommand(ACTION_FINISH, "/finish-trip", TripState.FINISHING, tripId)
+    }
+
+    private fun enqueueTripCommand(
+        action: String,
+        path: String,
+        transitionState: TripState,
+        tripId: String?
+    ): Boolean {
+        val eventId = java.util.UUID.randomUUID().toString()
+        val installationId = WearableIdentity.getOrCreateInstallationId(this)
+        pendingTripEventId = eventId
+        pendingTripAction = action
+        _tripErrorMessage.value = null
+        _tripSyncState.value = transitionState
+
+        val payload = JSONObject().apply {
+            put("eventId", eventId)
+            put("installationId", installationId)
+            put("action", action)
+            if (!tripId.isNullOrBlank()) put("tripId", tripId)
+        }.toString()
+
+        Log.i(TAG, "TRIP_COMMAND_SENT action=$action eventId=${eventId.take(8)} installationId=${installationId.take(8)} tripId=${tripId?.take(8)}")
+        sendSignalToPhone(path, payload)
+        return true
     }
 
     private fun persistTripState(state: String) {
@@ -236,10 +317,10 @@ class SensorService : Service(), SensorEventListener {
      */
     private fun startDeviceInfoLoop() {
         serviceScope.launch {
-            // Send immediately on startup
-            delay(2000) // Give Data Layer time to connect
+            // Try immediately and once more after Data Layer has had time to connect.
             sendDeviceInfoToPhone()
-            // Then every 30 seconds
+            delay(2_000)
+            sendDeviceInfoToPhone()
             while (isActive) {
                 delay(30_000)
                 sendDeviceInfoToPhone()
@@ -508,6 +589,8 @@ class SensorService : Service(), SensorEventListener {
     }
 
     private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+
         val serviceChannel = NotificationChannel(
             CHANNEL_ID,
             "ImpactX Sensor Monitoring",
@@ -543,6 +626,11 @@ class SensorService : Service(), SensorEventListener {
     }
 
     companion object {
+        private const val TAG = "WearSync"
+        private const val ACTION_START = "START_TRIP"
+        private const val ACTION_PAUSE = "PAUSE_TRIP"
+        private const val ACTION_RESUME = "RESUME_TRIP"
+        private const val ACTION_FINISH = "FINISH_TRIP"
         private const val NOTIFICATION_ID = 2026
         private const val CHANNEL_ID = "SensorServiceChannel"
         private const val PREFS_NAME = "impactx_wear_trip"
