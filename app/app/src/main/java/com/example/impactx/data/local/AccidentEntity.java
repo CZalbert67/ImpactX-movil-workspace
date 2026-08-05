@@ -1,6 +1,7 @@
 package com.example.impactx.data.local;
 
 import androidx.room.Entity;
+import androidx.room.Ignore;
 import androidx.room.PrimaryKey;
 
 @Entity(tableName = "accident_records")
@@ -17,6 +18,7 @@ public class AccidentEntity {
 
     public AccidentEntity() {}
 
+    @Ignore
     public AccidentEntity(int heartRate, double gForce, String timestamp, double lat, double lng, boolean sent) {
         this.heartRate = heartRate;
         this.gForce = gForce;
@@ -45,6 +47,8 @@ public class AccidentEntity {
     public void setLng(double lng) { this.lng = lng; }
 
     public boolean isSent() { return sent; }
+    
+    @Ignore
     public boolean getSent() { return sent; }
     public void setSent(boolean sent) { this.sent = sent; }
 }
