@@ -279,5 +279,19 @@ interface ApiService {
     suspend fun redeemFamilyInvitation(
         @Body request: RedeemFamilyInvitationRequest
     ): Response<Unit>
+
+    // ---- Wearable endpoints ----
+    @GET("api/v1/wearable")
+    suspend fun getWearable(): Response<WearableDto>
+
+    @POST("api/v1/wearable/pair")
+    suspend fun pairWearable(
+        @Body request: PairWearableRequest
+    ): Response<PairResponse>
+
+    @POST("api/v1/wearable/pair/confirm")
+    suspend fun confirmPairWearable(
+        @Body request: PairConfirmRequest
+    ): Response<WearableDto>
 }
 

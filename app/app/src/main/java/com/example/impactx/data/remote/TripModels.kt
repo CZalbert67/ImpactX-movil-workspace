@@ -25,3 +25,36 @@ data class TripActionResponse(
     @SerializedName("estado") val estado: String,
     @SerializedName("mensaje") val mensaje: String
 )
+
+// ============ WEARABLE ============
+data class PairWearableRequest(
+    @SerializedName("dispositivoId") val dispositivoId: String,
+    @SerializedName("nombre") val nombre: String,
+    @SerializedName("modelo") val modelo: String,
+    @SerializedName("fabricante") val fabricante: String = "Samsung",
+    @SerializedName("plataforma") val plataforma: String = "WearOS",
+    @SerializedName("versionSistemaOperativo") val versionSistemaOperativo: String? = null,
+    @SerializedName("versionFirmware") val versionFirmware: String? = null,
+    @SerializedName("appVersion") val appVersion: String? = null,
+    @SerializedName("capacidadesSensores") val capacidadesSensores: List<String> = emptyList()
+)
+
+data class PairConfirmRequest(
+    @SerializedName("token") val token: String
+)
+
+data class PairResponse(
+    @SerializedName("token") val token: String,
+    @SerializedName("expiresAtUtc") val expiresAtUtc: String,
+    @SerializedName("mensaje") val mensaje: String
+)
+
+data class WearableDto(
+    @SerializedName("id") val id: String,
+    @SerializedName("dispositivoId") val dispositivoId: String,
+    @SerializedName("nombre") val nombre: String,
+    @SerializedName("modelo") val modelo: String,
+    @SerializedName("fabricante") val fabricante: String,
+    @SerializedName("plataforma") val plataforma: String,
+    @SerializedName("estado") val estado: String
+)

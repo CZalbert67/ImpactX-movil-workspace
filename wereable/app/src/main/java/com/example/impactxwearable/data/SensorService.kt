@@ -51,48 +51,73 @@ class SensorService : Service(), SensorEventListener {
     val isTripActive = _isTripActive.asStateFlow()
 
     // ── Trip sync state machine ─────────────────────────────────────────────
-    enum class TripSyncState { IDLE, STARTING, ACTIVE, FINISHING, ERROR }
+    enum class TripState {
+        IDLE,
+        STARTING,
+        ACTIVE,
+        PAUSING,
+        PAUSED,
+        RESUMING,
+        FINISHING,
+        ERROR
+    }
 
-    internal val _tripSyncState = MutableStateFlow(TripSyncState.IDLE)
+    internal val _tripSyncState = MutableStateFlow(TripState.IDLE)
     val tripSyncState = _tripSyncState.asStateFlow()
+
+    private val _tripErrorMessage = MutableStateFlow<String?>(null)
+    val tripErrorMessage = _tripErrorMessage.asStateFlow()
 
     /** The eventId of the pending START_TRIP sent but not yet confirmed. */
     @Volatile var pendingTripEventId: String? = null
 
-    // Message listener for /trip-confirmed responses from the phone
+    // Message listener for /trip-confirmed and /trip-failed responses from the phone
     private val messageListener = com.google.android.gms.wearable.MessageClient.OnMessageReceivedListener { messageEvent ->
-        if (messageEvent.path == "/trip-confirmed") {
+        if (messageEvent.path == "/trip-confirmed" || messageEvent.path == "/trip-failed") {
             val payload = String(messageEvent.data)
-            Log.i("WearSync", "Confirmación de viaje recibida del celular: $payload")
+            Log.i("WearSync", "Confirmación/Fallo de viaje recibido del celular: $payload")
             receiveTripConfirmation(payload)
         }
     }
 
     fun setTripActive(active: Boolean) {
-        // Legacy helper — use tripSyncState for new UI code
         _isTripActive.value = active
     }
 
     /**
-     * Called when the phone replies on /trip-confirmed.
+     * Called when the phone replies on /trip-confirmed or /trip-failed.
      * Updates the state machine: STARTING → ACTIVE or ERROR, and FINISHING → IDLE or ERROR.
      */
     fun receiveTripConfirmation(payloadJson: String) {
         val json = runCatching { org.json.JSONObject(payloadJson) }.getOrNull() ?: return
         val success = json.optBoolean("success", false)
         val status = json.optString("status", "")
+        val message = json.optString("message", "")
         
         if (success) {
+            _tripErrorMessage.value = null
             if (status == "Finalizado") {
-                _tripSyncState.value = TripSyncState.IDLE
+                _tripSyncState.value = TripState.IDLE
                 _isTripActive.value = false
+            } else if (status == "Pausado") {
+                _tripSyncState.value = TripState.PAUSED
             } else {
-                _tripSyncState.value = TripSyncState.ACTIVE
+                _tripSyncState.value = TripState.ACTIVE
                 _isTripActive.value = true
             }
         } else {
-            _tripSyncState.value = TripSyncState.ERROR
-            // Keep current trip state active if finish failed, or inactive if start failed
+            val finalMsg = if (message.isNotBlank()) message else "Error en el viaje"
+            _tripErrorMessage.value = finalMsg
+            _tripSyncState.value = TripState.ERROR
+            
+            // Safely show Toast on main thread
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                android.widget.Toast.makeText(
+                    applicationContext,
+                    finalMsg,
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
         }
     }
 

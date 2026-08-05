@@ -11,7 +11,6 @@ public interface WearSyncEventDao {
     /**
      * Try to insert a new event.
      * IGNORE on conflict means: if the same eventId already exists, nothing happens.
-     * Returns the new rowId, or -1 if ignored (duplicate).
      */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     long insertEventIfAbsent(WearSyncEventEntity event);
@@ -19,11 +18,11 @@ public interface WearSyncEventDao {
     @Query("SELECT * FROM wear_sync_events WHERE eventId = :eventId LIMIT 1")
     WearSyncEventEntity findByEventId(String eventId);
 
-    @Query("UPDATE wear_sync_events SET status = :status, httpCode = :httpCode, backendEntityId = :backendEntityId, updatedAtUtc = :updatedAt WHERE eventId = :eventId")
-    void updateStatus(String eventId, String status, int httpCode, String backendEntityId, String updatedAt);
+    @Query("UPDATE wear_sync_events SET status = :status, httpCode = :httpCode, backendTripId = :backendTripId, updatedAt = :updatedAt WHERE eventId = :eventId")
+    void updateStatus(String eventId, String status, Integer httpCode, String backendTripId, String updatedAt);
 
-    @Query("UPDATE wear_sync_events SET status = :status, httpCode = :httpCode, errorMessage = :errorMessage, updatedAtUtc = :updatedAt WHERE eventId = :eventId")
-    void updateFailure(String eventId, String status, int httpCode, String errorMessage, String updatedAt);
+    @Query("UPDATE wear_sync_events SET status = :status, httpCode = :httpCode, errorMessage = :errorMessage, updatedAt = :updatedAt WHERE eventId = :eventId")
+    void updateFailure(String eventId, String status, Integer httpCode, String errorMessage, String updatedAt);
 
     /** Returns true if the event was already successfully processed. */
     @Query("SELECT COUNT(*) FROM wear_sync_events WHERE eventId = :eventId AND status = 'SUCCEEDED'")
