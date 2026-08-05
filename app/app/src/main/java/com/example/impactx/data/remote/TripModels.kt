@@ -58,3 +58,16 @@ data class WearableDto(
     @SerializedName("plataforma") val plataforma: String,
     @SerializedName("estado") val estado: String
 )
+
+// ============ TELEMETRY ============
+data class TelemetryPointDto(
+    @SerializedName("lat") val lat: Double,
+    @SerializedName("lng") val lng: Double,
+    @SerializedName("velocidad") val velocidad: Double = 0.0,
+    @SerializedName("timestamp") val timestamp: String
+)
+
+data class TelemetryBatchRequest(
+    @SerializedName("puntos") val puntos: List<TelemetryPointDto>
+)
+

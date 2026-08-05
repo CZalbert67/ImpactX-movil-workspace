@@ -65,6 +65,12 @@ interface ApiService {
     @GET("api/v1/trips")
     suspend fun getTrips(): Response<List<ViajeDto>>
 
+    @POST("api/v1/trips/{id}/telemetry")
+    suspend fun ingestTelemetry(
+        @retrofit2.http.Path("id") tripId: String,
+        @Body request: TelemetryBatchRequest
+    ): Response<Unit>
+
     // ---- Alerts / SOS ----
     @POST("api/v1/alerts/sos")
     suspend fun sendSos(
