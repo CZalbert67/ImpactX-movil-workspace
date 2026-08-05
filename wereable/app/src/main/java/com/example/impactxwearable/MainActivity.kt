@@ -147,22 +147,25 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onStartTrip = {
                                     // Only send START_TRIP if in IDLE or ERROR state
-                                    if (tripSyncState == SensorService.TripSyncState.IDLE ||
-                                        tripSyncState == SensorService.TripSyncState.ERROR) {
-                                        val eventId = java.util.UUID.randomUUID().toString()
+                                    if (tripSyncState == SensorService.TripState.IDLE ||
+                                        tripSyncState == SensorService.TripState.ERROR) {
+                                        val eventId = if (tripSyncState == SensorService.TripState.ERROR) {
+                                            service.pendingTripEventId ?: java.util.UUID.randomUUID().toString()
+                                        } else {
+                                            java.util.UUID.randomUUID().toString()
+                                        }
                                         service.pendingTripEventId = eventId
-                                        service._tripSyncState.value = SensorService.TripSyncState.STARTING
+                                        service._tripSyncState.value = SensorService.TripState.STARTING
                                         val payload = org.json.JSONObject().apply {
                                             put("eventId", eventId)
                                             put("action", "START_TRIP")
                                         }.toString()
                                         service.sendSignalToPhone("/start-trip", payload)
-                                        // Do NOT call setTripActive(true) here — wait for /trip-confirmed from phone
                                     }
                                 },
                                 onFinishTrip = {
                                     val eventId = java.util.UUID.randomUUID().toString()
-                                    service._tripSyncState.value = SensorService.TripSyncState.FINISHING
+                                    service._tripSyncState.value = SensorService.TripState.FINISHING
                                     val payload = org.json.JSONObject().apply {
                                         put("eventId", eventId)
                                         put("action", "FINISH_TRIP")

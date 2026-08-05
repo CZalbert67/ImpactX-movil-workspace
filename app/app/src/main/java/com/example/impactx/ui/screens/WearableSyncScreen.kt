@@ -50,6 +50,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
 import kotlin.math.sqrt
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 // GATT Standard UUIDs
 val HEART_RATE_SERVICE_UUID: UUID = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
@@ -359,6 +361,65 @@ fun WearableSyncScreen(
                 }
                 WearableManager.connectedDeviceName = deviceItem.name
                 WearableManager.connectedDeviceAddress = deviceItem.address
+
+                // --- Room Linkage & Backend Pairing ---
+                var nodeId = "unknown-node"
+                try {
+                    val nodes = com.google.android.gms.wearable.Wearable.getNodeClient(context).connectedNodes.awaitTask()
+                    nodeId = nodes.firstOrNull()?.id ?: "unknown-node"
+                } catch (e: Exception) {
+                    android.util.Log.e("WearSync", "Error getting connected nodes: ${e.message}")
+                }
+
+                val db = com.example.impactx.data.local.AppDatabase.getDatabase(context)
+                val api = com.example.impactx.data.remote.ApiClient.getApiService(context)
+                var linkedDeviceId: String? = null
+
+                try {
+                    val getResp = api.getWearable()
+                    if (getResp.isSuccessful && getResp.body() != null) {
+                        linkedDeviceId = getResp.body()!!.dispositivoId
+                        android.util.Log.i("WearSync", "Wearable ya vinculado en backend: $linkedDeviceId")
+                    } else if (getResp.code() == 404) {
+                        val address = deviceItem.address
+                        val pairReq = com.example.impactx.data.remote.PairWearableRequest(
+                            dispositivoId = "GW8-PHYSICAL-$address",
+                            nombre = deviceItem.name,
+                            modelo = "Galaxy Watch 8",
+                            fabricante = "Samsung",
+                            plataforma = "WearOS"
+                        )
+                        val pairResp = api.pairWearable(pairReq)
+                        if (pairResp.isSuccessful && pairResp.body() != null) {
+                            val token = pairResp.body()!!.token
+                            val confirmResp = api.confirmPairWearable(com.example.impactx.data.remote.PairConfirmRequest(token))
+                            if (confirmResp.isSuccessful && confirmResp.body() != null) {
+                                linkedDeviceId = confirmResp.body()!!.dispositivoId
+                                android.util.Log.i("WearSync", "Auto-pairing exitoso: $linkedDeviceId")
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("WearSync", "Error en conexión con backend para pairing: ${e.message}")
+                }
+
+                if (linkedDeviceId != null && nodeId != "unknown-node") {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        db.wearableLinkageDao().insertLinkage(
+                            com.example.impactx.data.local.WearableLinkageEntity(
+                                nodeId,
+                                linkedDeviceId,
+                                deviceItem.name,
+                                "Galaxy Watch 8",
+                                "Samsung",
+                                "Vinculado",
+                                System.currentTimeMillis()
+                            )
+                        )
+                    }
+                    android.util.Log.i("WearSync", "Local linkage guardado: nodeId=$nodeId -> backendDeviceId=$linkedDeviceId")
+                }
+
                 bleState = BLEState.CONNECTED_DASHBOARD
                 Toast.makeText(context, "¡Reloj vinculado con éxito!", Toast.LENGTH_SHORT).show()
                 onNavigateBack()
@@ -375,6 +436,65 @@ fun WearableSyncScreen(
                 realBatteryLevel = (85..99).random()
                 WearableManager.connectedDeviceName = deviceItem.name
                 WearableManager.connectedDeviceAddress = deviceItem.address
+
+                // --- Room Linkage & Backend Pairing (Simulado) ---
+                var nodeId = "unknown-node"
+                try {
+                    val nodes = com.google.android.gms.wearable.Wearable.getNodeClient(context).connectedNodes.awaitTask()
+                    nodeId = nodes.firstOrNull()?.id ?: "unknown-node"
+                } catch (e: Exception) {
+                    android.util.Log.e("WearSync", "Error getting connected nodes: ${e.message}")
+                }
+
+                val db = com.example.impactx.data.local.AppDatabase.getDatabase(context)
+                val api = com.example.impactx.data.remote.ApiClient.getApiService(context)
+                var linkedDeviceId: String? = null
+
+                try {
+                    val getResp = api.getWearable()
+                    if (getResp.isSuccessful && getResp.body() != null) {
+                        linkedDeviceId = getResp.body()!!.dispositivoId
+                        android.util.Log.i("WearSync", "Wearable ya vinculado en backend (simulado): $linkedDeviceId")
+                    } else if (getResp.code() == 404) {
+                        val address = deviceItem.address
+                        val pairReq = com.example.impactx.data.remote.PairWearableRequest(
+                            dispositivoId = "GW8-PHYSICAL-$address",
+                            nombre = deviceItem.name,
+                            modelo = "Galaxy Watch 8",
+                            fabricante = "Samsung",
+                            plataforma = "WearOS"
+                        )
+                        val pairResp = api.pairWearable(pairReq)
+                        if (pairResp.isSuccessful && pairResp.body() != null) {
+                            val token = pairResp.body()!!.token
+                            val confirmResp = api.confirmPairWearable(com.example.impactx.data.remote.PairConfirmRequest(token))
+                            if (confirmResp.isSuccessful && confirmResp.body() != null) {
+                                linkedDeviceId = confirmResp.body()!!.dispositivoId
+                                android.util.Log.i("WearSync", "Auto-pairing exitoso (simulado): $linkedDeviceId")
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("WearSync", "Error en conexión con backend para pairing (simulado): ${e.message}")
+                }
+
+                if (linkedDeviceId != null && nodeId != "unknown-node") {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        db.wearableLinkageDao().insertLinkage(
+                            com.example.impactx.data.local.WearableLinkageEntity(
+                                nodeId,
+                                linkedDeviceId,
+                                deviceItem.name,
+                                "Galaxy Watch 8",
+                                "Samsung",
+                                "Vinculado",
+                                System.currentTimeMillis()
+                            )
+                        )
+                    }
+                    android.util.Log.i("WearSync", "Local linkage guardado (simulado): nodeId=$nodeId -> backendDeviceId=$linkedDeviceId")
+                }
+
                 bleState = BLEState.CONNECTED_DASHBOARD
                 Toast.makeText(context, "¡Reloj vinculado con éxito (Simulado)!", Toast.LENGTH_SHORT).show()
                 onNavigateBack()
@@ -1167,3 +1287,15 @@ fun WearableSyncScreen(
         }
     }
 }
+
+// Suspending helper extension for Google tasks inside this screen
+suspend fun <T> com.google.android.gms.tasks.Task<T>.awaitTask(): T = kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+    addOnCompleteListener { task ->
+        if (task.isSuccessful) {
+            continuation.resume(task.result)
+        } else {
+            continuation.resumeWithException(task.exception ?: Exception("Unknown task error"))
+        }
+    }
+}
+
