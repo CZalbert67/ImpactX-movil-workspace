@@ -71,6 +71,20 @@ class SensorService : Service(), SensorEventListener {
     /** The eventId of the pending START_TRIP sent but not yet confirmed. */
     @Volatile var pendingTripEventId: String? = null
 
+    /** The backend tripId of the currently active trip. Persisted in prefs. */
+    @Volatile var activeTripId: String? = null
+        private set
+
+    fun persistActiveTripId(id: String?) {
+        activeTripId = id
+        val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (id != null) {
+            prefs.edit().putString(KEY_ACTIVE_TRIP_ID, id).apply()
+        } else {
+            prefs.edit().remove(KEY_ACTIVE_TRIP_ID).apply()
+        }
+    }
+
     // Message listener for /trip-confirmed and /trip-failed responses from the phone
     private val messageListener = com.google.android.gms.wearable.MessageClient.OnMessageReceivedListener { messageEvent ->
         if (messageEvent.path == "/trip-confirmed" || messageEvent.path == "/trip-failed") {
@@ -90,25 +104,50 @@ class SensorService : Service(), SensorEventListener {
      */
     fun receiveTripConfirmation(payloadJson: String) {
         val json = runCatching { org.json.JSONObject(payloadJson) }.getOrNull() ?: return
+        val incomingEventId = json.optString("eventId", "")
+
+        // Ignore ACKs for events we didn't send (stale replies)
+        if (incomingEventId.isNotBlank() && pendingTripEventId != null &&
+            incomingEventId != pendingTripEventId) {
+            Log.w("WearSync", "ACK_IGNORED incomingEventId=${incomingEventId.take(8)} pendingEventId=${pendingTripEventId?.take(8)}")
+            return
+        }
+
         val success = json.optBoolean("success", false)
         val status = json.optString("status", "")
+        val tripId = json.optString("tripId", "").takeIf { it.isNotBlank() }
         val message = json.optString("message", "")
         
         if (success) {
             _tripErrorMessage.value = null
-            if (status == "Finalizado") {
-                _tripSyncState.value = TripState.IDLE
-                _isTripActive.value = false
-            } else if (status == "Pausado") {
-                _tripSyncState.value = TripState.PAUSED
-            } else {
-                _tripSyncState.value = TripState.ACTIVE
-                _isTripActive.value = true
+            when {
+                status == "Finalizado" -> {
+                    persistActiveTripId(null)
+                    persistTripState("IDLE")
+                    pendingTripEventId = null
+                    _tripSyncState.value = TripState.IDLE
+                    _isTripActive.value = false
+                }
+                status == "Pausado" -> {
+                    if (tripId != null) persistActiveTripId(tripId)
+                    persistTripState("PAUSED")
+                    _tripSyncState.value = TripState.PAUSED
+                    _isTripActive.value = true
+                }
+                else -> {
+                    if (tripId != null) persistActiveTripId(tripId)
+                    persistTripState("ACTIVE")
+                    pendingTripEventId = null
+                    _tripSyncState.value = TripState.ACTIVE
+                    _isTripActive.value = true
+                }
             }
+            Log.i("WearSync", "TRIP_ACK_OK eventId=${incomingEventId.take(8)} status=$status tripId=${tripId?.take(8)}")
         } else {
             val finalMsg = if (message.isNotBlank()) message else "Error en el viaje"
             _tripErrorMessage.value = finalMsg
             _tripSyncState.value = TripState.ERROR
+            Log.e("WearSync", "TRIP_ACK_FAILED eventId=${incomingEventId.take(8)} message=$finalMsg")
             
             // Safely show Toast on main thread
             android.os.Handler(android.os.Looper.getMainLooper()).post {
@@ -119,6 +158,11 @@ class SensorService : Service(), SensorEventListener {
                 ).show()
             }
         }
+    }
+
+    private fun persistTripState(state: String) {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_TRIP_STATE, state).apply()
     }
 
     // ── Unified impact coordinator ────────────────────────────────────────────
@@ -159,15 +203,66 @@ class SensorService : Service(), SensorEventListener {
             acquire(10 * 60 * 1000L /*10 minutes fallback*/)
         }
 
+        // Restore persisted state (survives process death)
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        activeTripId = prefs.getString(KEY_ACTIVE_TRIP_ID, null)
+        val savedState = prefs.getString(KEY_TRIP_STATE, null)
+        if (activeTripId != null && savedState == "ACTIVE") {
+            _tripSyncState.value = TripState.ACTIVE
+            _isTripActive.value = true
+            Log.i("WearSync", "SERVICE_RESTORED activeTripId=${activeTripId?.take(8)}... state=ACTIVE")
+        } else if (activeTripId != null && savedState == "PAUSED") {
+            _tripSyncState.value = TripState.PAUSED
+            _isTripActive.value = true
+            Log.i("WearSync", "SERVICE_RESTORED activeTripId=${activeTripId?.take(8)}... state=PAUSED")
+        }
+
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification("Iniciando sensores..."))
 
         registerSensors()
         checkPhoneConnection()
         startTelemetryLoop()
+        startDeviceInfoLoop()
 
         // Register message listener to receive /trip-confirmed from phone
         Wearable.getMessageClient(this).addListener(messageListener)
+    }
+
+    /**
+     * Sends /device-info to the phone immediately and then every 30 seconds.
+     * This allows the phone to resolve installationId → backendDeviceId even
+     * if the nodeId changed (e.g. after a reboot or pairing reset).
+     */
+    private fun startDeviceInfoLoop() {
+        serviceScope.launch {
+            // Send immediately on startup
+            delay(2000) // Give Data Layer time to connect
+            sendDeviceInfoToPhone()
+            // Then every 30 seconds
+            while (isActive) {
+                delay(30_000)
+                sendDeviceInfoToPhone()
+            }
+        }
+    }
+
+    private fun sendDeviceInfoToPhone() {
+        serviceScope.launch {
+            try {
+                val payload = WearableIdentity.buildDeviceInfoPayload(this@SensorService)
+                val nodes = Wearable.getNodeClient(this@SensorService).connectedNodes.await()
+                for (node in nodes) {
+                    Wearable.getMessageClient(this@SensorService)
+                        .sendMessage(node.id, "/device-info", payload.toByteArray())
+                }
+                if (nodes.isNotEmpty()) {
+                    Log.i("WearSync", "DEVICE_INFO_SENT to ${nodes.size} node(s)")
+                }
+            } catch (e: Exception) {
+                Log.w("WearSync", "Error sending /device-info: ${e.message}")
+            }
+        }
     }
 
     private fun registerSensors() {
@@ -450,5 +545,8 @@ class SensorService : Service(), SensorEventListener {
     companion object {
         private const val NOTIFICATION_ID = 2026
         private const val CHANNEL_ID = "SensorServiceChannel"
+        private const val PREFS_NAME = "impactx_wear_trip"
+        private const val KEY_ACTIVE_TRIP_ID = "active_trip_id"
+        private const val KEY_TRIP_STATE = "trip_state"
     }
 }

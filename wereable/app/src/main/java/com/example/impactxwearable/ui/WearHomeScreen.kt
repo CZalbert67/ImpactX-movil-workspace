@@ -159,7 +159,9 @@ fun WearHomeScreen(
     onToggleService: () -> Unit,
     onSimulateImpact: () -> Unit,
     onStartTrip: () -> Unit = {},
-    onFinishTrip: () -> Unit = {}
+    onFinishTrip: () -> Unit = {},
+    onPauseTrip: () -> Unit = {},
+    onResumeTrip: () -> Unit = {}
 ) {
     var showCalibration by remember { mutableStateOf(true) }
 
@@ -198,7 +200,10 @@ fun WearHomeScreen(
         isTripActive && gForce > 3.0f -> Color(0xFF1A0000)
         isTripActive -> Color(0xFF001520)
         tripSyncState == com.example.impactxwearable.data.SensorService.TripState.STARTING ||
-        tripSyncState == com.example.impactxwearable.data.SensorService.TripState.FINISHING -> Color(0xFF001520)
+        tripSyncState == com.example.impactxwearable.data.SensorService.TripState.FINISHING ||
+        tripSyncState == com.example.impactxwearable.data.SensorService.TripState.PAUSING ||
+        tripSyncState == com.example.impactxwearable.data.SensorService.TripState.RESUMING -> Color(0xFF001520)
+        tripSyncState == com.example.impactxwearable.data.SensorService.TripState.PAUSED -> Color(0xFF0A1520)
         tripSyncState == com.example.impactxwearable.data.SensorService.TripState.ERROR -> Color(0xFF1A0A00)
         else -> Color(0xFF06111F)
     }
@@ -206,7 +211,10 @@ fun WearHomeScreen(
     val statusColor = when {
         !isServiceRunning -> Color.Gray
         tripSyncState == com.example.impactxwearable.data.SensorService.TripState.STARTING ||
-        tripSyncState == com.example.impactxwearable.data.SensorService.TripState.FINISHING -> Color(0xFFFFB74D)
+        tripSyncState == com.example.impactxwearable.data.SensorService.TripState.FINISHING ||
+        tripSyncState == com.example.impactxwearable.data.SensorService.TripState.PAUSING ||
+        tripSyncState == com.example.impactxwearable.data.SensorService.TripState.RESUMING -> Color(0xFFFFB74D)
+        tripSyncState == com.example.impactxwearable.data.SensorService.TripState.PAUSED -> Color(0xFF80DEEA)
         tripSyncState == com.example.impactxwearable.data.SensorService.TripState.ERROR -> Color(0xFFEF5350)
         isTripActive -> Color(0xFF29B6F6)
         gForce > 3.0f -> Color(0xFFEF5350)
@@ -215,8 +223,11 @@ fun WearHomeScreen(
 
     val statusText = when {
         !isServiceRunning -> "INACTIVO"
-        tripSyncState == com.example.impactxwearable.data.SensorService.TripState.STARTING -> "Iniciando viaje..."
+        tripSyncState == com.example.impactxwearable.data.SensorService.TripState.STARTING -> "Iniciando..."
+        tripSyncState == com.example.impactxwearable.data.SensorService.TripState.PAUSING -> "Pausando..."
+        tripSyncState == com.example.impactxwearable.data.SensorService.TripState.RESUMING -> "Reanudando..."
         tripSyncState == com.example.impactxwearable.data.SensorService.TripState.FINISHING -> "Terminando..."
+        tripSyncState == com.example.impactxwearable.data.SensorService.TripState.PAUSED -> "EN PAUSA"
         tripSyncState == com.example.impactxwearable.data.SensorService.TripState.ERROR -> "Error de viaje"
         isTripActive && gForce > 3.0f -> "⚠ IMPACTO"
         isTripActive -> "EN VIAJE"
@@ -372,33 +383,92 @@ fun WearHomeScreen(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Trip button
+                // Trip control buttons - state machine driven
                 if (isServiceRunning) {
-                    Button(
-                        onClick = if (isTripActive) onFinishTrip else onStartTrip,
-                        colors = ButtonDefaults.buttonColors(
-                            backgroundColor = if (isTripActive) Color(0xFF37474F) else Color(0xFF1565C0)
-                        ),
-                        modifier = Modifier.size(44.dp)
-                    ) {
-                        Text(
-                            text = if (isTripActive) "🏁" else "🚗",
-                            fontSize = 18.sp
-                        )
+                    val isTransitioning = tripSyncState == com.example.impactxwearable.data.SensorService.TripState.STARTING ||
+                        tripSyncState == com.example.impactxwearable.data.SensorService.TripState.PAUSING ||
+                        tripSyncState == com.example.impactxwearable.data.SensorService.TripState.RESUMING ||
+                        tripSyncState == com.example.impactxwearable.data.SensorService.TripState.FINISHING
+
+                    when (tripSyncState) {
+                        com.example.impactxwearable.data.SensorService.TripState.IDLE,
+                        com.example.impactxwearable.data.SensorService.TripState.ERROR -> {
+                            // START button
+                            Button(
+                                onClick = onStartTrip,
+                                enabled = !isTransitioning,
+                                colors = ButtonDefaults.buttonColors(
+                                    backgroundColor = Color(0xFF1565C0),
+                                    disabledBackgroundColor = Color(0xFF37474F)
+                                ),
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Text(text = "🚗", fontSize = 18.sp)
+                            }
+                        }
+                        com.example.impactxwearable.data.SensorService.TripState.ACTIVE -> {
+                            // PAUSE button
+                            Button(
+                                onClick = onPauseTrip,
+                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF5C6BC0)),
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Text(text = "⏸", fontSize = 16.sp)
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            // FINISH button
+                            Button(
+                                onClick = onFinishTrip,
+                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF37474F)),
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Text(text = "🏁", fontSize = 16.sp)
+                            }
+                        }
+                        com.example.impactxwearable.data.SensorService.TripState.PAUSED -> {
+                            // RESUME button
+                            Button(
+                                onClick = onResumeTrip,
+                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF388E3C)),
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Text(text = "▶", fontSize = 16.sp)
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            // FINISH button (also available from PAUSED)
+                            Button(
+                                onClick = onFinishTrip,
+                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF37474F)),
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Text(text = "🏁", fontSize = 16.sp)
+                            }
+                        }
+                        else -> {
+                            // Transitioning state - show disabled spinner placeholder
+                            Button(
+                                onClick = {},
+                                enabled = false,
+                                colors = ButtonDefaults.buttonColors(
+                                    disabledBackgroundColor = Color(0xFF37474F)
+                                ),
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Text(text = "⏳", fontSize = 16.sp)
+                            }
+                        }
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    // Simulate Impact button (only in trip mode)
-                    Button(
-                        onClick = onSimulateImpact,
-                        colors = ButtonDefaults.buttonColors(
-                            backgroundColor = if (isTripActive) Color(0xFFB71C1C) else Color(0xFF263238)
-                        ),
-                        enabled = isTripActive,
-                        modifier = Modifier.size(44.dp)
-                    ) {
-                        Text("⚡", fontSize = 16.sp)
+                    if (tripSyncState == com.example.impactxwearable.data.SensorService.TripState.ACTIVE) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        // Simulate Impact button (only during ACTIVE trip)
+                        Button(
+                            onClick = onSimulateImpact,
+                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFB71C1C)),
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Text("⚡", fontSize = 16.sp)
+                        }
                     }
                 }
             }
@@ -406,8 +476,15 @@ fun WearHomeScreen(
             // Trip label
             if (isServiceRunning) {
                 Spacer(modifier = Modifier.height(3.dp))
+                val label = when (tripSyncState) {
+                    com.example.impactxwearable.data.SensorService.TripState.ACTIVE -> "⏸ Pausa  🏁 Fin  ⚡ Golpe"
+                    com.example.impactxwearable.data.SensorService.TripState.PAUSED -> "▶ Reanudar  🏁 Finalizar"
+                    com.example.impactxwearable.data.SensorService.TripState.IDLE,
+                    com.example.impactxwearable.data.SensorService.TripState.ERROR -> "🚗 Iniciar Viaje"
+                    else -> "Esperando confirmación..."
+                }
                 Text(
-                    text = if (isTripActive) "🏁 Terminar  ⚡ Golpe" else "🚗 Iniciar Viaje",
+                    text = label,
                     fontSize = 8.sp,
                     color = Color.Gray,
                     textAlign = TextAlign.Center
