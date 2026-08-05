@@ -50,8 +50,54 @@ class SensorService : Service(), SensorEventListener {
     private val _isTripActive = MutableStateFlow(false)
     val isTripActive = _isTripActive.asStateFlow()
 
+    // ── Trip sync state machine ─────────────────────────────────────────────
+    enum class TripSyncState { IDLE, STARTING, ACTIVE, FINISHING, ERROR }
+
+    internal val _tripSyncState = MutableStateFlow(TripSyncState.IDLE)
+    val tripSyncState = _tripSyncState.asStateFlow()
+
+    /** The eventId of the pending START_TRIP sent but not yet confirmed. */
+    @Volatile var pendingTripEventId: String? = null
+
     fun setTripActive(active: Boolean) {
+        // Legacy helper — use tripSyncState for new UI code
         _isTripActive.value = active
+    }
+
+    /**
+     * Called when the phone replies on /trip-confirmed.
+     * Updates the state machine: STARTING → ACTIVE or ERROR.
+     */
+    fun receiveTripConfirmation(payloadJson: String) {
+        val json = runCatching { org.json.JSONObject(payloadJson) }.getOrNull() ?: return
+        val success = json.optBoolean("success", false)
+        val tripId = json.optString("tripId", "")
+        if (success && tripId.isNotBlank()) {
+            _tripSyncState.value = TripSyncState.ACTIVE
+            _isTripActive.value = true
+        } else {
+            _tripSyncState.value = TripSyncState.ERROR
+            _isTripActive.value = false
+        }
+    }
+
+    // ── Unified impact coordinator ────────────────────────────────────────────
+    // Guarantees exactly ONE impactEventId per physical event regardless of
+    // how many sensors (accelerometer, gyroscope) fire simultaneously.
+    @Volatile private var impactEventId: String? = null
+    @Volatile private var lastImpactMs: Long = 0
+    private val IMPACT_COOLDOWN_MS = 15_000L
+
+    private fun coordinateImpact(source: String, peakG: Float) {
+        val now = System.currentTimeMillis()
+        // If already triggered within cooldown, ignore
+        if (now - lastImpactMs < IMPACT_COOLDOWN_MS) return
+        // Set _impactDetected before the cooldown guard so the UI reflects it immediately
+        if (_impactDetected.value) return
+        lastImpactMs = now
+        val eventId = java.util.UUID.randomUUID().toString()
+        impactEventId = eventId
+        triggerImpactAlert(source, peakG, eventId)
     }
 
     private var lastTelemetryTime = 0L
@@ -136,8 +182,8 @@ class SensorService : Service(), SensorEventListener {
                 }
 
                 // Crash detection threshold (> 8.0G) - sensitive to agitating/shaking for testing
-                if (magnitude > 8.0f && !_impactDetected.value) {
-                    triggerImpactAlert()
+                if (magnitude > 8.0f) {
+                    coordinateImpact("ACCELEROMETER", magnitude)
                 }
 
                 val now = System.currentTimeMillis()
@@ -152,8 +198,8 @@ class SensorService : Service(), SensorEventListener {
                 
                 // Check for fast rotation suggesting a rollover (> 30 rad/s threshold)
                 val rotationMagnitude = sqrt(rollRate*rollRate + pitchRate*pitchRate)
-                if (rotationMagnitude > 30.0f && !_impactDetected.value) { 
-                    triggerImpactAlert()
+                if (rotationMagnitude > 30.0f) {
+                    coordinateImpact("GYROSCOPE", rotationMagnitude)
                 }
             }
         }
@@ -161,9 +207,17 @@ class SensorService : Service(), SensorEventListener {
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
-    private fun triggerImpactAlert() {
+    private fun triggerImpactAlert(source: String, peakG: Float, eventId: String) {
         _impactDetected.value = true
-        sendSignalToPhone("/sos-triggered", "CRITICAL_SOS")
+        // Send IMPACT_DETECTED with unified eventId — the phone escalates to SOS on confirmation
+        val payload = org.json.JSONObject().apply {
+            put("eventId", eventId)
+            put("action", "IMPACT_DETECTED")
+            put("source", source)
+            put("peakG", peakG)
+            put("timestampUtc", java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date()))
+        }.toString()
+        sendSignalToPhone("/impact-detected", payload)
         
         // 1. Wake physical screen using WakeLock
         try {

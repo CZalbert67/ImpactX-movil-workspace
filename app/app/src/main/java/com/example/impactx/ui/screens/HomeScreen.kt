@@ -188,7 +188,9 @@ fun HomeScreen(
                     )
 
                     Column(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         menuItems.forEach { (title, icon, action) ->
@@ -524,7 +526,7 @@ fun HomeScreen(
                     textAlign = TextAlign.Center
                 )
                 Text(
-                    text = "El viaje se iniciará de forma automática al comenzar la actividad desde tu Smartwatch.",
+                    text = "El viaje se inicia manualmente desde tu Galaxy Watch8. La app sincroniza el estado con el backend ImpactX.",
                     color = TextSecondaryColor,
                     fontSize = 11.sp,
                     modifier = Modifier

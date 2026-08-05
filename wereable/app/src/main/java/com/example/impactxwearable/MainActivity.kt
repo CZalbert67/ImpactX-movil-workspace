@@ -94,13 +94,25 @@ class MainActivity : ComponentActivity() {
                         val isConnected by service.isConnected.collectAsState()
                         val impactDetected by service.impactDetected.collectAsState()
                         val isTripActive by service.isTripActive.collectAsState()
+                        val tripSyncState by service.tripSyncState.collectAsState()
 
-                        val triggerAlarmFromIntent = triggerAlarmState
-                        if (triggerAlarmFromIntent && !impactDetected) {
-                            service.sendSignalToPhone("/impact-detected", "CRITICAL_IMPACT")
+                        // ── Safe one-shot impact signal on TRIGGER_ALARM intent ──────────
+                        // LaunchedEffect runs once per key change, NOT on every recomposition.
+                        // After sending, we consume the flag to prevent resend after rotation.
+                        LaunchedEffect(triggerAlarmState) {
+                            if (triggerAlarmState && !impactDetected) {
+                                val eventId = java.util.UUID.randomUUID().toString()
+                                val payload = org.json.JSONObject().apply {
+                                    put("eventId", eventId)
+                                    put("action", "IMPACT_DETECTED")
+                                    put("source", "INTENT")
+                                }.toString()
+                                service.sendSignalToPhone("/impact-detected", payload)
+                                triggerAlarmState = false  // Consume flag immediately
+                            }
                         }
 
-                        if (impactDetected || triggerAlarmFromIntent) {
+                        if (impactDetected || triggerAlarmState) {
                             WearAlertScreen(
                                 onCancel = {
                                     triggerAlarmState = false
@@ -108,8 +120,14 @@ class MainActivity : ComponentActivity() {
                                     service.resetAlarm()
                                 },
                                 onTimeout = {
-                                    // SOS is auto-fired — send final confirmation
-                                    service.sendSignalToPhone("/sos-triggered", "CRITICAL_SOS")
+                                    // Escalate the SAME impactEventId to SOS — do NOT create a new event.
+                                    // The phone already received IMPACT_DETECTED and is tracking it.
+                                    val existingEventId = service.impactEventId
+                                    val payload = org.json.JSONObject().apply {
+                                        put("eventId", existingEventId ?: java.util.UUID.randomUUID().toString())
+                                        put("action", "ESCALATE_TO_SOS")
+                                    }.toString()
+                                    service.sendSignalToPhone("/sos-triggered", payload)
                                 }
                             )
                         } else {
@@ -120,6 +138,7 @@ class MainActivity : ComponentActivity() {
                                 maxGForce = maxGForce,
                                 isConnected = isConnected,
                                 isTripActive = isTripActive,
+                                tripSyncState = tripSyncState,
                                 onToggleService = { toggleMonitoringService() },
                                 onSimulateImpact = {
                                     // Send crash signal with current sensor data
@@ -127,15 +146,31 @@ class MainActivity : ComponentActivity() {
                                     service.sendSignalToPhone("/impact-detected", payload)
                                 },
                                 onStartTrip = {
-                                    // Signal the phone to start a trip (phone will capture GPS)
-                                    service.sendSignalToPhone("/start-trip", "START")
-                                    service.setTripActive(true)
-                                    Toast.makeText(this, "🚗 Viaje iniciado", Toast.LENGTH_SHORT).show()
+                                    // Only send START_TRIP if in IDLE or ERROR state
+                                    if (tripSyncState == SensorService.TripSyncState.IDLE ||
+                                        tripSyncState == SensorService.TripSyncState.ERROR) {
+                                        val eventId = java.util.UUID.randomUUID().toString()
+                                        service.pendingTripEventId = eventId
+                                        service._tripSyncState.value = SensorService.TripSyncState.STARTING
+                                        val payload = org.json.JSONObject().apply {
+                                            put("eventId", eventId)
+                                            put("action", "START_TRIP")
+                                        }.toString()
+                                        service.sendSignalToPhone("/start-trip", payload)
+                                        // Do NOT call setTripActive(true) here — wait for /trip-confirmed from phone
+                                    }
                                 },
                                 onFinishTrip = {
-                                    service.sendSignalToPhone("/finish-trip", "FINISH")
+                                    val eventId = java.util.UUID.randomUUID().toString()
+                                    service._tripSyncState.value = SensorService.TripSyncState.FINISHING
+                                    val payload = org.json.JSONObject().apply {
+                                        put("eventId", eventId)
+                                        put("action", "FINISH_TRIP")
+                                    }.toString()
+                                    service.sendSignalToPhone("/finish-trip", payload)
                                     service.setTripActive(false)
-                                    Toast.makeText(this, "🏁 Viaje finalizado", Toast.LENGTH_SHORT).show()
+                                    service._tripSyncState.value = SensorService.TripSyncState.IDLE
+                                    Toast.makeText(this, "Viaje finalizado", Toast.LENGTH_SHORT).show()
                                 }
                             )
                         }

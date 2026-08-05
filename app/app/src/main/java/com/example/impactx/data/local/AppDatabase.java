@@ -5,10 +5,11 @@ import androidx.room.Database;
 import androidx.room.Room;
 import androidx.room.RoomDatabase;
 
-@Database(entities = {SessionEntity.class, AccidentEntity.class}, version = 2, exportSchema = false)
+@Database(entities = {SessionEntity.class, AccidentEntity.class, WearSyncEventEntity.class}, version = 3, exportSchema = false)
 public abstract class AppDatabase extends RoomDatabase {
     public abstract SessionDao sessionDao();
     public abstract AccidentDao accidentDao();
+    public abstract WearSyncEventDao wearSyncEventDao();
 
     private static volatile AppDatabase INSTANCE;
 

@@ -154,6 +154,8 @@ fun WearHomeScreen(
     maxGForce: Float,
     isConnected: Boolean,
     isTripActive: Boolean = false,
+    tripSyncState: com.example.impactxwearable.data.SensorService.TripSyncState =
+        com.example.impactxwearable.data.SensorService.TripSyncState.IDLE,
     onToggleService: () -> Unit,
     onSimulateImpact: () -> Unit,
     onStartTrip: () -> Unit = {},
@@ -195,11 +197,15 @@ fun WearHomeScreen(
     val bgColor = when {
         isTripActive && gForce > 3.0f -> Color(0xFF1A0000)
         isTripActive -> Color(0xFF001520)
+        tripSyncState == com.example.impactxwearable.data.SensorService.TripSyncState.STARTING -> Color(0xFF001520)
+        tripSyncState == com.example.impactxwearable.data.SensorService.TripSyncState.ERROR -> Color(0xFF1A0A00)
         else -> Color(0xFF06111F)
     }
 
     val statusColor = when {
         !isServiceRunning -> Color.Gray
+        tripSyncState == com.example.impactxwearable.data.SensorService.TripSyncState.STARTING -> Color(0xFFFFB74D)
+        tripSyncState == com.example.impactxwearable.data.SensorService.TripSyncState.ERROR -> Color(0xFFEF5350)
         isTripActive -> Color(0xFF29B6F6)
         gForce > 3.0f -> Color(0xFFEF5350)
         else -> Color(0xFF00BFA5)
@@ -207,6 +213,8 @@ fun WearHomeScreen(
 
     val statusText = when {
         !isServiceRunning -> "INACTIVO"
+        tripSyncState == com.example.impactxwearable.data.SensorService.TripSyncState.STARTING -> "Iniciando viaje..."
+        tripSyncState == com.example.impactxwearable.data.SensorService.TripSyncState.ERROR -> "Error al iniciar"
         isTripActive && gForce > 3.0f -> "⚠ IMPACTO"
         isTripActive -> "EN VIAJE"
         else -> "PROTEGIDO"
