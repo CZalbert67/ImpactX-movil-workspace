@@ -163,12 +163,39 @@ class MainActivity : ComponentActivity() {
                                         service.sendSignalToPhone("/start-trip", payload)
                                     }
                                 },
+                                onPauseTrip = {
+                                    // Only send PAUSE_TRIP if in ACTIVE state
+                                    if (tripSyncState == SensorService.TripState.ACTIVE) {
+                                        val eventId = java.util.UUID.randomUUID().toString()
+                                        service._tripSyncState.value = SensorService.TripState.PAUSING
+                                        val payload = org.json.JSONObject().apply {
+                                            put("eventId", eventId)
+                                            put("action", "PAUSE_TRIP")
+                                            put("tripId", service.activeTripId ?: "")
+                                        }.toString()
+                                        service.sendSignalToPhone("/pause-trip", payload)
+                                    }
+                                },
+                                onResumeTrip = {
+                                    // Only send RESUME_TRIP if in PAUSED state
+                                    if (tripSyncState == SensorService.TripState.PAUSED) {
+                                        val eventId = java.util.UUID.randomUUID().toString()
+                                        service._tripSyncState.value = SensorService.TripState.RESUMING
+                                        val payload = org.json.JSONObject().apply {
+                                            put("eventId", eventId)
+                                            put("action", "RESUME_TRIP")
+                                            put("tripId", service.activeTripId ?: "")
+                                        }.toString()
+                                        service.sendSignalToPhone("/resume-trip", payload)
+                                    }
+                                },
                                 onFinishTrip = {
                                     val eventId = java.util.UUID.randomUUID().toString()
                                     service._tripSyncState.value = SensorService.TripState.FINISHING
                                     val payload = org.json.JSONObject().apply {
                                         put("eventId", eventId)
                                         put("action", "FINISH_TRIP")
+                                        put("tripId", service.activeTripId ?: "")
                                     }.toString()
                                     service.sendSignalToPhone("/finish-trip", payload)
                                 }

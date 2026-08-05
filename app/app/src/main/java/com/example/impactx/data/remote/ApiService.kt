@@ -49,8 +49,21 @@ interface ApiService {
         @retrofit2.http.Path("id") tripId: String
     ): Response<TripActionResponse>
 
+    @POST("api/v1/trips/{id}/pause")
+    suspend fun pauseTrip(
+        @retrofit2.http.Path("id") tripId: String
+    ): Response<TripActionResponse>
+
+    @POST("api/v1/trips/{id}/resume")
+    suspend fun resumeTrip(
+        @retrofit2.http.Path("id") tripId: String
+    ): Response<TripActionResponse>
+
     @GET("api/v1/trips/active")
     suspend fun getActiveTrip(): Response<ViajeDto>
+
+    @GET("api/v1/trips")
+    suspend fun getTrips(): Response<List<ViajeDto>>
 
     // ---- Alerts / SOS ----
     @POST("api/v1/alerts/sos")
@@ -293,5 +306,8 @@ interface ApiService {
     suspend fun confirmPairWearable(
         @Body request: PairConfirmRequest
     ): Response<WearableDto>
+
+    @DELETE("api/v1/wearable/unlink")
+    suspend fun unlinkWearable(): Response<Unit>
 }
 

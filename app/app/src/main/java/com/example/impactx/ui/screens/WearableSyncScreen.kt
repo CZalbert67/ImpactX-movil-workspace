@@ -81,6 +81,18 @@ object WearableManager {
     var activeWearTripId by mutableStateOf<String?>(null)
     var lastCrashAlertId by mutableStateOf<String?>(null)
     var triggerEmergencyNav by mutableStateOf(false) // flag to navigate to chat
+
+    // ── Backend pairing state ─────────────────────────────────────────────────
+    /** True ONLY after a successful /device-info pairing handshake (not just BLE connection). */
+    var backendLinked by mutableStateOf(false)
+    /** The dispositivoId returned by the backend after successful pair+confirm. */
+    var backendDeviceId by mutableStateOf<String?>(null)
+    /** Non-null when the last pairing attempt failed and needs user attention. */
+    var pairingError by mutableStateOf<String?>(null)
+    /** Epoch ms when the last telemetry or device-info was received. */
+    @Volatile var lastSeenAtMs: Long = 0
+    /** True when telemetry arrived within the last 60 seconds. */
+    var telemetryFresh by mutableStateOf(false)
 }
 
 data class BLEDeviceItem(
@@ -351,7 +363,10 @@ fun WearableSyncScreen(
         bleState = BLEState.CONNECTING
         isRealConnection = deviceItem.device != null
 
-        if (deviceItem.device != null && ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+        if (deviceItem.device != null &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+        ) {
+            // Real BLE GATT connection (for heart rate and battery notifications)
             activeGatt = deviceItem.device.connectGatt(context, false, gattCallback)
             coroutineScope.launch {
                 connectionProgress = 0f
@@ -361,142 +376,29 @@ fun WearableSyncScreen(
                 }
                 WearableManager.connectedDeviceName = deviceItem.name
                 WearableManager.connectedDeviceAddress = deviceItem.address
-
-                // --- Room Linkage & Backend Pairing ---
-                var nodeId = "unknown-node"
-                try {
-                    val nodes = com.google.android.gms.wearable.Wearable.getNodeClient(context).connectedNodes.awaitTask()
-                    nodeId = nodes.firstOrNull()?.id ?: "unknown-node"
-                } catch (e: Exception) {
-                    android.util.Log.e("WearSync", "Error getting connected nodes: ${e.message}")
-                }
-
-                val db = com.example.impactx.data.local.AppDatabase.getDatabase(context)
-                val api = com.example.impactx.data.remote.ApiClient.getApiService(context)
-                var linkedDeviceId: String? = null
-
-                try {
-                    val getResp = api.getWearable()
-                    if (getResp.isSuccessful && getResp.body() != null) {
-                        linkedDeviceId = getResp.body()!!.dispositivoId
-                        android.util.Log.i("WearSync", "Wearable ya vinculado en backend: $linkedDeviceId")
-                    } else if (getResp.code() == 404) {
-                        val address = deviceItem.address
-                        val pairReq = com.example.impactx.data.remote.PairWearableRequest(
-                            dispositivoId = "GW8-PHYSICAL-$address",
-                            nombre = deviceItem.name,
-                            modelo = "Galaxy Watch 8",
-                            fabricante = "Samsung",
-                            plataforma = "WearOS"
-                        )
-                        val pairResp = api.pairWearable(pairReq)
-                        if (pairResp.isSuccessful && pairResp.body() != null) {
-                            val token = pairResp.body()!!.token
-                            val confirmResp = api.confirmPairWearable(com.example.impactx.data.remote.PairConfirmRequest(token))
-                            if (confirmResp.isSuccessful && confirmResp.body() != null) {
-                                linkedDeviceId = confirmResp.body()!!.dispositivoId
-                                android.util.Log.i("WearSync", "Auto-pairing exitoso: $linkedDeviceId")
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.e("WearSync", "Error en conexión con backend para pairing: ${e.message}")
-                }
-
-                if (linkedDeviceId != null && nodeId != "unknown-node") {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        db.wearableLinkageDao().insertLinkage(
-                            com.example.impactx.data.local.WearableLinkageEntity(
-                                nodeId,
-                                linkedDeviceId,
-                                deviceItem.name,
-                                "Galaxy Watch 8",
-                                "Samsung",
-                                "Vinculado",
-                                System.currentTimeMillis()
-                            )
-                        )
-                    }
-                    android.util.Log.i("WearSync", "Local linkage guardado: nodeId=$nodeId -> backendDeviceId=$linkedDeviceId")
-                }
-
+                // NOTE: backendLinked is set by WearableMessageListenerService
+                // when the wearable sends /device-info. We do NOT set it here.
                 bleState = BLEState.CONNECTED_DASHBOARD
-                Toast.makeText(context, "¡Reloj vinculado con éxito!", Toast.LENGTH_SHORT).show()
+                android.util.Log.i("WearSync", "BLE_CONNECTED deviceName=${deviceItem.name} — esperando /device-info del reloj para vincular backend")
+                Toast.makeText(context, "Conectado por BLE. Vinculando con backend automáticamente...", Toast.LENGTH_SHORT).show()
                 onNavigateBack()
             }
         } else {
-            // Simulated connection simulation path
+            // Simulated / bonded device (no active GATT required)
             coroutineScope.launch {
                 connectionProgress = 0f
                 while (connectionProgress < 1.0f) {
                     delay(30)
                     connectionProgress += 0.03f
                 }
-                realHeartRate = (70..80).random()
+                realHeartRate    = (70..80).random()
                 realBatteryLevel = (85..99).random()
-                WearableManager.connectedDeviceName = deviceItem.name
+                WearableManager.connectedDeviceName    = deviceItem.name
                 WearableManager.connectedDeviceAddress = deviceItem.address
-
-                // --- Room Linkage & Backend Pairing (Simulado) ---
-                var nodeId = "unknown-node"
-                try {
-                    val nodes = com.google.android.gms.wearable.Wearable.getNodeClient(context).connectedNodes.awaitTask()
-                    nodeId = nodes.firstOrNull()?.id ?: "unknown-node"
-                } catch (e: Exception) {
-                    android.util.Log.e("WearSync", "Error getting connected nodes: ${e.message}")
-                }
-
-                val db = com.example.impactx.data.local.AppDatabase.getDatabase(context)
-                val api = com.example.impactx.data.remote.ApiClient.getApiService(context)
-                var linkedDeviceId: String? = null
-
-                try {
-                    val getResp = api.getWearable()
-                    if (getResp.isSuccessful && getResp.body() != null) {
-                        linkedDeviceId = getResp.body()!!.dispositivoId
-                        android.util.Log.i("WearSync", "Wearable ya vinculado en backend (simulado): $linkedDeviceId")
-                    } else if (getResp.code() == 404) {
-                        val address = deviceItem.address
-                        val pairReq = com.example.impactx.data.remote.PairWearableRequest(
-                            dispositivoId = "GW8-PHYSICAL-$address",
-                            nombre = deviceItem.name,
-                            modelo = "Galaxy Watch 8",
-                            fabricante = "Samsung",
-                            plataforma = "WearOS"
-                        )
-                        val pairResp = api.pairWearable(pairReq)
-                        if (pairResp.isSuccessful && pairResp.body() != null) {
-                            val token = pairResp.body()!!.token
-                            val confirmResp = api.confirmPairWearable(com.example.impactx.data.remote.PairConfirmRequest(token))
-                            if (confirmResp.isSuccessful && confirmResp.body() != null) {
-                                linkedDeviceId = confirmResp.body()!!.dispositivoId
-                                android.util.Log.i("WearSync", "Auto-pairing exitoso (simulado): $linkedDeviceId")
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.e("WearSync", "Error en conexión con backend para pairing (simulado): ${e.message}")
-                }
-
-                if (linkedDeviceId != null && nodeId != "unknown-node") {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        db.wearableLinkageDao().insertLinkage(
-                            com.example.impactx.data.local.WearableLinkageEntity(
-                                nodeId,
-                                linkedDeviceId,
-                                deviceItem.name,
-                                "Galaxy Watch 8",
-                                "Samsung",
-                                "Vinculado",
-                                System.currentTimeMillis()
-                            )
-                        )
-                    }
-                    android.util.Log.i("WearSync", "Local linkage guardado (simulado): nodeId=$nodeId -> backendDeviceId=$linkedDeviceId")
-                }
-
+                // NOTE: backendLinked is set by WearableMessageListenerService
                 bleState = BLEState.CONNECTED_DASHBOARD
-                Toast.makeText(context, "¡Reloj vinculado con éxito (Simulado)!", Toast.LENGTH_SHORT).show()
+                android.util.Log.i("WearSync", "BLE_SIMULATED deviceName=${deviceItem.name} — esperando /device-info del reloj")
+                Toast.makeText(context, "Reloj detectado. Vinculando con backend automáticamente...", Toast.LENGTH_SHORT).show()
                 onNavigateBack()
             }
         }
