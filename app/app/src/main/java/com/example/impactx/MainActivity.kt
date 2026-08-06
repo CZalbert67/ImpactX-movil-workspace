@@ -16,6 +16,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.example.impactx.theme.ImpactXTheme
+import com.example.impactx.data.sync.FcmTokenRegistrar
+import com.example.impactx.data.sync.ImpactSyncScheduler
+import com.example.impactx.data.sync.ImpactNotificationChannels
 
 class MainActivity : ComponentActivity() {
 
@@ -31,7 +34,11 @@ class MainActivity : ComponentActivity() {
             turnScreenOn()
         }
 
+        ImpactNotificationChannels.ensureCreated(applicationContext)
         requestRequiredPermissions()
+        ImpactSyncScheduler.ensurePeriodic(applicationContext)
+        ImpactSyncScheduler.enqueueCritical(applicationContext)
+        FcmTokenRegistrar.ensureRegistered(applicationContext)
         enableEdgeToEdge()
         setContent {
             ImpactXTheme {

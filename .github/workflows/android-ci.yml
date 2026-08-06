@@ -142,3 +142,67 @@ jobs:
           app/app/build/outputs/managed_device_android_test_additional_output/**
         if-no-files-found: warn
         retention-days: 7
+
+  wearable-build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: wereable
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Make wearable Gradle wrapper executable
+      run: chmod +x ./gradlew
+
+    - name: Setup JDK 17
+      uses: actions/setup-java@v5
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v6
+      with:
+        cache-provider: basic
+        validate-wrappers: true
+
+    - name: Run Wearable Lint
+      run: ./gradlew --no-daemon --stacktrace :app:lintDebug
+
+    - name: Run Wearable Unit Tests
+      run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest
+
+    - name: Build Wearable Debug APK
+      run: ./gradlew --no-daemon --stacktrace :app:assembleDebug
+
+    - name: Upload Wearable Lint Report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: wearable-lint-report
+        path: |
+          wereable/app/build/reports/lint-results-debug.html
+          wereable/app/build/reports/lint-results-debug.xml
+        if-no-files-found: warn
+        retention-days: 7
+
+    - name: Upload Wearable Unit Test Results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: wearable-unit-test-results
+        path: |
+          wereable/app/build/test-results/testDebugUnitTest/**
+          wereable/app/build/reports/tests/testDebugUnitTest/**
+        if-no-files-found: warn
+        retention-days: 7
+
+    - name: Upload Wearable Debug APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: wearable-debug-apk
+        path: wereable/app/build/outputs/apk/debug/*.apk
+        if-no-files-found: error
+        retention-days: 7

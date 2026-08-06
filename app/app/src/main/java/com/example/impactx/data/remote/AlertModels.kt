@@ -11,8 +11,11 @@ data class SosRequest(
     @SerializedName("canal") val canal: String = "wearable",
     @SerializedName("gForce") val gForce: String? = null,
     @SerializedName("frecuenciaCardiaca") val frecuenciaCardiaca: String? = null,
-    @SerializedName("modo") val modo: String = "automatico",
-    @SerializedName("viajeId") val viajeId: String? = null
+    @SerializedName("modo") val modo: String = "immediate",
+    @SerializedName("viajeId") val viajeId: String? = null,
+    @SerializedName("clientEventId") val clientEventId: String,
+    @SerializedName("capturedOffline") val capturedOffline: Boolean = false,
+    @SerializedName("occurredAtUtc") val occurredAtUtc: String? = null,
 )
 
 data class DetectAlertRequest(
@@ -35,5 +38,5 @@ data class AlertStatusDto(
     @SerializedName("lng") val lng: Double,
     @SerializedName("lugar") val lugar: String?,
     @SerializedName("creadoEn") val creadoEn: String,
-    @SerializedName("contactosNotificados") val contactosNotificados: List<String>
+    @SerializedName("contactosNotificados") val contactosNotificados: List<String>?
 )

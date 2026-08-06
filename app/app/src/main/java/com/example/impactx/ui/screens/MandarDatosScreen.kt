@@ -1,23 +1,52 @@
 package com.example.impactx.ui.screens
 
+import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -25,313 +54,424 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.impactx.data.WearableContract
 import com.example.impactx.data.local.AppDatabase
-import com.example.impactx.data.local.AccidentEntity
-import com.example.impactx.data.remote.ApiClient
-import com.example.impactx.data.remote.SosRequest
-import com.example.impactx.data.LocationHelper
+import com.example.impactx.data.local.PendingSosEntity
+import com.example.impactx.data.local.TelemetryQueueEntity
+import com.example.impactx.data.sync.ImpactSyncScheduler
+import com.example.impactx.data.sync.NetworkState
+import com.example.impactx.data.sync.SyncPreferences
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+import java.util.UUID
+
+private data class SyncDashboardState(
+    val online: Boolean = false,
+    val pendingSos: Int = 0,
+    val pendingTelemetry: Int = 0,
+    val recentSos: List<PendingSosEntity> = emptyList(),
+    val lastBatch: SyncPreferences.LastBatch = SyncPreferences.LastBatch(null, 0, 0, 0, false, null),
+    val lastSyncAt: Long = 0L,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MandarDatosScreen(
     onNavigateBack: () -> Unit,
-    onTriggerSos: () -> Unit
+    onTriggerSos: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    
-    var accidents by remember { mutableStateOf<List<AccidentEntity>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var transmittingId by remember { mutableStateOf<Int?>(null) }
+    var state by remember { mutableStateOf(SyncDashboardState()) }
+    var telemetryHold by remember {
+        mutableStateOf(SyncPreferences.isTelemetryHoldEnabled(context))
+    }
+    var busyAction by remember { mutableStateOf<String?>(null) }
 
-    fun loadAccidents() {
-        scope.launch(Dispatchers.IO) {
+    suspend fun loadState() {
+        val next = withContext(Dispatchers.IO) {
             val db = AppDatabase.getDatabase(context)
-            val list = db.accidentDao().getAllAccidents()
-            withContext(Dispatchers.Main) {
-                accidents = list
-                isLoading = false
-            }
+            SyncDashboardState(
+                online = NetworkState.isOnline(context),
+                pendingSos = db.pendingSosDao().countPending(),
+                pendingTelemetry = db.telemetryQueueDao().countPending(),
+                recentSos = db.pendingSosDao().getRecent(5),
+                lastBatch = SyncPreferences.lastBatch(context),
+                lastSyncAt = SyncPreferences.lastSyncAt(context),
+            )
         }
+        state = next
     }
 
     LaunchedEffect(Unit) {
-        loadAccidents()
+        while (true) {
+            loadState()
+            delay(1_000)
+        }
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(DarkBlue, DarkBlueEnd)
-                )
-            )
-            .systemBarsPadding()
+            .background(Brush.verticalGradient(listOf(DarkBlue, DarkBlueEnd)))
+            .systemBarsPadding(),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
         ) {
-            // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = onNavigateBack,
-                    colors = IconButtonDefaults.iconButtonColors(contentColor = TealPrimary)
-                ) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Atrás")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onNavigateBack) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Atrás", tint = TealPrimary)
                 }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Mandar Datos (SQLite)",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimaryColor
-                )
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text(
+                        "Estado de sincronización",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimaryColor,
+                    )
+                    Text(
+                        "SOS inmediato y telemetría batch",
+                        fontSize = 12.sp,
+                        color = GrayMuted,
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(Modifier.height(14.dp))
+            StatusCard(state, telemetryHold)
+            Spacer(Modifier.height(14.dp))
 
-            Text(
-                text = "Historial local de colisiones detectadas por el reloj. Al presionar 'Mandar a la Web', se notificará de inmediato a tus contactos SOS y servicios médicos de emergencia a través del backend.",
-                fontSize = 12.sp,
-                color = GrayMuted,
-                modifier = Modifier.padding(horizontal = 8.dp)
-            )
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            if (isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = TealPrimary)
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CardBgColor),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, TealPrimary.copy(alpha = 0.25f)),
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        "Comportamiento automático",
+                        color = TextPrimaryColor,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "• Una colisión grave se guarda y se intenta enviar inmediatamente.\n" +
+                            "• Sin internet, el SOS queda pendiente y se envía antes que la telemetría.\n" +
+                            "• La telemetría se agrupa en lotes de 20 eventos o 30 segundos.\n" +
+                            "• El viaje no se pausa ni finaliza por detectar un impacto.",
+                        color = GrayMuted,
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp,
+                    )
                 }
-            } else if (accidents.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+            }
+
+            Spacer(Modifier.height(14.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CardBgColor),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color(0xFFEAB308).copy(alpha = 0.35f)),
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        "MODO DEMOSTRACIÓN — DATOS SIMULADOS",
+                        color = Color(0xFFEAB308),
+                        fontWeight = FontWeight.Black,
+                        fontSize = 13.sp,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            text = "🛡️",
-                            fontSize = 44.sp,
-                            modifier = Modifier.padding(bottom = 12.dp)
-                        )
-                        Text(
-                            text = "No hay siniestros pendientes",
-                            color = TextPrimaryColor,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Tu base de datos SQLite no contiene alertas de impacto locales.",
-                            color = GrayMuted,
-                            fontSize = 13.sp,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(top = 4.dp, start = 24.dp, end = 24.dp)
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Retener sólo telemetría",
+                                color = TextPrimaryColor,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                "El internet continúa disponible para que el SOS sí llegue al monitor.",
+                                color = GrayMuted,
+                                fontSize = 11.sp,
+                            )
+                        }
+                        Switch(
+                            checked = telemetryHold,
+                            onCheckedChange = { enabled ->
+                                telemetryHold = enabled
+                                SyncPreferences.setTelemetryHoldEnabled(context, enabled)
+                                if (!enabled) {
+                                    ImpactSyncScheduler.enqueueTelemetry(context, immediate = true, force = true)
+                                }
+                            },
                         )
                     }
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(accidents) { record ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = CardBgColor),
-                            border = BorderStroke(
-                                width = 1.dp,
-                                color = if (record.sent) Color.White.copy(alpha = 0.05f) else Color(0xFFEF4444).copy(alpha = 0.3f)
-                            )
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                // Title and Badge Row
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = if (record.sent) Icons.Default.CheckCircle else Icons.Default.Warning,
-                                            contentDescription = null,
-                                            tint = if (record.sent) Color(0xFF22C55E) else Color(0xFFEF4444),
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = if (record.sent) "SOS Enviado" else "Choque Registrado",
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (record.sent) Color(0xFF22C55E) else Color(0xFFEF4444),
-                                            fontSize = 14.sp
-                                        )
-                                    }
 
-                                    // Status pill
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(
-                                                if (record.sent) Color(0xFF22C55E).copy(alpha = 0.1f) 
-                                                else Color(0xFFEAB308).copy(alpha = 0.1f)
-                                            )
-                                            .padding(horizontal = 8.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = if (record.sent) "Sincronizado" else "Pendiente",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (record.sent) Color(0xFF22C55E) else Color(0xFFEAB308)
-                                        )
-                                    }
-                                }
-
-                                Divider(
-                                    color = GrayMuted.copy(alpha = 0.15f), 
-                                    modifier = Modifier.padding(vertical = 10.dp)
-                                )
-
-                                // Metrics details grid
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column {
-                                        Text("Fuerza G", fontSize = 11.sp, color = GrayMuted)
-                                        Text(
-                                            text = String.format("%.1f G", record.gForce),
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = TextPrimaryColor
-                                        )
-                                    }
-                                    Column {
-                                        Text("Ritmo Cardíaco", fontSize = 11.sp, color = GrayMuted)
-                                        Text(
-                                            text = "${record.heartRate} BPM",
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = TextPrimaryColor
-                                        )
-                                    }
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text("Hora del Choque", fontSize = 11.sp, color = GrayMuted)
-                                        Text(
-                                            text = record.timestamp.takeLast(8),
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = TextPrimaryColor
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                // Date and Location info
-                                Text(
-                                    text = "Fecha: ${record.timestamp.take(10)}",
-                                    fontSize = 11.sp,
-                                    color = GrayMuted
-                                )
-                                Text(
-                                    text = "GPS: ${if (record.lat != 0.0) String.format("%.5f, %.5f", record.lat, record.lng) else "No disponible"}",
-                                    fontSize = 11.sp,
-                                    color = GrayMuted
-                                )
-
-                                // Action Button
-                                if (!record.sent) {
-                                    Spacer(modifier = Modifier.height(14.dp))
-                                    val isTransmitting = transmittingId == record.id
-                                    
-                                    Button(
-                                        onClick = {
-                                            transmittingId = record.id
-                                            scope.launch {
-                                                try {
-                                                    val api = ApiClient.getApiService(context)
-                                                    val placeName = if (record.lat != 0.0) {
-                                                        LocationHelper.formatLocation(record.lat, record.lng)
-                                                    } else {
-                                                        "Ubicación no disponible"
-                                                    }
-                                                    
-                                                    val response = api.sendSos(
-                                                        SosRequest(
-                                                            lat = record.lat,
-                                                            lng = record.lng,
-                                                            lugar = placeName,
-                                                            severidad = "severe",
-                                                            canal = "wearable",
-                                                            gForce = String.format("%.2f", record.gForce),
-                                                            frecuenciaCardiaca = record.heartRate.toString(),
-                                                            modo = "automatico",
-                                                            viajeId = WearableManager.activeWearTripId
-                                                        )
-                                                    )
-                                                    
-                                                    if (response.isSuccessful) {
-                                                        val alert = response.body()
-                                                        WearableManager.lastCrashAlertId = alert?.id
-                                                        
-                                                        withContext(Dispatchers.IO) {
-                                                            val db = AppDatabase.getDatabase(context)
-                                                            db.accidentDao().markAsSent(record.id)
-                                                        }
-                                                        
-                                                        Toast.makeText(context, "¡SOS Enviado y Sincronizado! 🚨", Toast.LENGTH_LONG).show()
-                                                        loadAccidents()
-                                                        onTriggerSos()
-                                                    } else {
-                                                        Toast.makeText(context, "Error de Ingesta: ${response.code()}", Toast.LENGTH_SHORT).show()
-                                                    }
-                                                } catch (e: Exception) {
-                                                    Toast.makeText(context, "Error de red al transmitir datos", Toast.LENGTH_SHORT).show()
-                                                } finally {
-                                                    transmittingId = null
-                                                }
-                                            }
-                                        },
-                                        enabled = !isTransmitting,
-                                        modifier = Modifier.fillMaxWidth(),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
-                                    ) {
-                                        if (isTransmitting) {
-                                            CircularProgressIndicator(
-                                                color = Color.White, 
-                                                modifier = Modifier.size(18.dp),
-                                                strokeWidth = 2.dp
-                                            )
-                                        } else {
-                                            Text(
-                                                text = "Mandar a la Web / Activar SOS 🚨", 
-                                                color = Color.White,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 12.sp
-                                            )
-                                        }
-                                    }
-                                }
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = {
+                            telemetryHold = true
+                            SyncPreferences.setTelemetryHoldEnabled(context, true)
+                            busyAction = "generate"
+                            scope.launch {
+                                val result = generateDemoTelemetry(context)
+                                busyAction = null
+                                Toast.makeText(context, result, Toast.LENGTH_LONG).show()
+                                loadState()
                             }
+                        },
+                        enabled = busyAction == null,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = TealPrimary),
+                    ) {
+                        if (busyAction == "generate") {
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        } else {
+                            Text("Retener y generar 20 muestras", fontWeight = FontWeight.Bold)
                         }
                     }
+
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            telemetryHold = false
+                            SyncPreferences.setTelemetryHoldEnabled(context, false)
+                            ImpactSyncScheduler.enqueueCritical(context)
+                            ImpactSyncScheduler.enqueueTelemetry(context, immediate = true, force = true)
+                            Toast.makeText(context, "Sincronización liberada: SOS primero, batch después.", Toast.LENGTH_LONG).show()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E)),
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Restablecer señal y sincronizar", fontWeight = FontWeight.Bold)
+                    }
+
+                    val lastBatchId = state.lastBatch.batchId
+                    if (!lastBatchId.isNullOrBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = {
+                                busyAction = "requeue"
+                                scope.launch {
+                                    val count = withContext(Dispatchers.IO) {
+                                        AppDatabase.getDatabase(context)
+                                            .telemetryQueueDao()
+                                            .requeueBatch(lastBatchId)
+                                    }
+                                    ImpactSyncScheduler.enqueueTelemetry(context, immediate = true, force = true)
+                                    busyAction = null
+                                    Toast.makeText(
+                                        context,
+                                        "Lote reenviado con los mismos eventId: $count eventos.",
+                                        Toast.LENGTH_LONG,
+                                    ).show()
+                                    loadState()
+                                }
+                            },
+                            enabled = busyAction == null,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Reenviar último batch para probar idempotencia")
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+            LastBatchCard(state.lastBatch)
+            Spacer(Modifier.height(14.dp))
+            RecentSosCard(state.recentSos, onTriggerSos)
+            Spacer(Modifier.height(28.dp))
+        }
+    }
+}
+
+@Composable
+private fun StatusCard(state: SyncDashboardState, telemetryHold: Boolean) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = CardBgColor),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    if (state.online) Icons.Default.CheckCircle else Icons.Default.CloudOff,
+                    contentDescription = null,
+                    tint = if (state.online) Color(0xFF22C55E) else Color(0xFFEF4444),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (state.online) "Conexión disponible" else "Sin conexión",
+                    color = TextPrimaryColor,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Divider(Modifier.padding(vertical = 12.dp), color = GrayMuted.copy(alpha = 0.2f))
+            MetricRow("SOS pendientes", state.pendingSos.toString(), state.pendingSos > 0)
+            MetricRow("Telemetría pendiente", state.pendingTelemetry.toString(), state.pendingTelemetry > 0)
+            MetricRow("Retención demo", if (telemetryHold) "ACTIVA" else "INACTIVA", telemetryHold)
+            MetricRow(
+                "Última sincronización",
+                if (state.lastSyncAt == 0L) "Sin registros" else formatLocalTime(state.lastSyncAt),
+                false,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MetricRow(label: String, value: String, warning: Boolean) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 3.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(label, color = GrayMuted, fontSize = 12.sp)
+        Text(
+            value,
+            color = if (warning) Color(0xFFEAB308) else TextPrimaryColor,
+            fontWeight = FontWeight.Bold,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun LastBatchCard(batch: SyncPreferences.LastBatch) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = CardBgColor),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Último batch confirmado por backend", color = TextPrimaryColor, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            if (batch.batchId.isNullOrBlank()) {
+                Text("Todavía no se ha enviado un lote.", color = GrayMuted, fontSize = 12.sp)
+            } else {
+                MetricRow("Batch ID", batch.batchId.take(12) + "…", false)
+                MetricRow("Recibidos", batch.count.toString(), false)
+                MetricRow("Insertados", batch.inserted.toString(), false)
+                MetricRow("Duplicados", batch.duplicates.toString(), batch.duplicates > 0)
+                MetricRow("Capturado offline", if (batch.capturedOffline) "Sí" else "No", batch.capturedOffline)
+                Text(batch.processedAt ?: "", color = GrayMuted, fontSize = 10.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecentSosCard(events: List<PendingSosEntity>, onTriggerSos: () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = CardBgColor),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text("SOS recientes", color = TextPrimaryColor, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            if (events.isEmpty()) {
+                Text("No hay alertas registradas.", color = GrayMuted, fontSize = 12.sp)
+            } else {
+                events.forEach { event ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                if (event.status == "SENT") Icons.Default.CheckCircle else Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = if (event.status == "SENT") Color(0xFF22C55E) else Color(0xFFEF4444),
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Column {
+                                Text(
+                                    "${event.gForce ?: "?"} G · ${event.heartRate ?: "?"} BPM",
+                                    color = TextPrimaryColor,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Text(event.timestampUtc ?: "", color = GrayMuted, fontSize = 10.sp)
+                            }
+                        }
+                        Text(event.status ?: "PENDING", color = GrayMuted, fontSize = 10.sp)
+                    }
+                }
+                OutlinedButton(onClick = onTriggerSos, modifier = Modifier.fillMaxWidth()) {
+                    Text("Abrir módulo de emergencia")
                 }
             }
         }
     }
 }
+
+private suspend fun generateDemoTelemetry(context: Context): String = withContext(Dispatchers.IO) {
+    val prefs = context.getSharedPreferences("impactx_prefs", Context.MODE_PRIVATE)
+    val tripId = prefs.getString("active_trip_id", null) ?: WearableManager.activeWearTripId
+        ?: return@withContext "Inicia un viaje desde el Galaxy Watch8 antes de generar el batch."
+    val wearableDeviceId = WearableManager.backendDeviceId
+        ?: return@withContext "El Galaxy Watch8 todavía no está vinculado con el backend."
+
+    val db = AppDatabase.getDatabase(context)
+    val now = System.currentTimeMillis()
+    var inserted = 0
+    repeat(20) { index ->
+        val entity = TelemetryQueueEntity().apply {
+            eventId = UUID.randomUUID().toString()
+            this.tripId = tripId
+            sequenceNumber = SyncPreferences.nextSequence(context)
+            timestampUtc = utcTimestamp(now - (19 - index) * 2_000L)
+            lat = 19.99750 + index * 0.00001
+            lng = -99.34250 + index * 0.00001
+            velocity = 12.0 + index * 0.2
+            gpsAccuracyMeters = 8.0
+            accelerationX = 0.10 + index * 0.01
+            accelerationY = 0.05
+            accelerationZ = 9.80
+            accelerationMagnitude = 9.81 + index * 0.01
+            gyroscopeX = 0.01
+            gyroscopeY = 0.02
+            gyroscopeZ = 0.01
+            heartRate = 78 + (index % 5)
+            batteryLevel = 86
+            capturedOffline = true
+            this.wearableDeviceId = wearableDeviceId
+            wearableModel = WearableContract.MODEL
+            status = "PENDING"
+            batchId = null
+            lastError = null
+            createdAtMs = now - (19 - index) * 2_000L
+            sentAtMs = 0L
+        }
+        if (db.telemetryQueueDao().insertIfAbsent(entity) != -1L) inserted++
+    }
+
+    // El botón activa la retención antes de llegar aquí, por lo que las
+    // muestras permanecen visibles como PENDING hasta que se libere el demo.
+    ImpactSyncScheduler.enqueueTelemetry(context, immediate = false, force = false)
+    "$inserted muestras creadas y retenidas para la demostración batch."
+}
+
+private fun utcTimestamp(epochMs: Long): String = SimpleDateFormat(
+    "yyyy-MM-dd'T'HH:mm:ss'Z'",
+    Locale.US,
+).apply { timeZone = TimeZone.getTimeZone("UTC") }.format(Date(epochMs))
+
+private fun formatLocalTime(epochMs: Long): String = SimpleDateFormat(
+    "yyyy-MM-dd HH:mm:ss",
+    Locale.getDefault(),
+).format(Date(epochMs))

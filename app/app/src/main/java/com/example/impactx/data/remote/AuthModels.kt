@@ -39,5 +39,8 @@ data class UsuarioDto(
 )
 
 data class UpdateFcmTokenRequest(
-    @SerializedName("token") val token: String
+    @SerializedName("deviceId") val deviceId: String,
+    @SerializedName("platform") val platform: String = "Android",
+    @SerializedName("token") val token: String,
+    @SerializedName("name") val name: String? = null
 )

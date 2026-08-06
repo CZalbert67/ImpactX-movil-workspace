@@ -256,7 +256,7 @@ fun EmergencyChatScreen(
                 }
             }
 
-            // Cancel SOS Button
+            // Close only this screen; the already-sent SOS is not cancelled.
             Button(
                 onClick = onCloseChat,
                 modifier = Modifier
@@ -269,7 +269,7 @@ fun EmergencyChatScreen(
                     contentColor = Color.White
                 )
             ) {
-                Text("Desactivar Alerta / Finalizar SOS", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("Cerrar pantalla de emergencia", fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

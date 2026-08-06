@@ -45,7 +45,6 @@ fun ActiveTripScreen(
 
     // Crash detection simulation state
     var showCrashDialog by remember { mutableStateOf(false) }
-    var crashCountdown by remember { mutableStateOf(5) }
     var crashForceValue by remember { mutableStateOf(0.0f) }
 
     val context = LocalContext.current
@@ -82,22 +81,12 @@ fun ActiveTripScreen(
         if (liveGForce > 3.2f && !showCrashDialog && currentPlan != "Básico") {
             crashForceValue = liveGForce
             showCrashDialog = true
-            crashCountdown = 5
-        }
-    }
-
-    // Crash countdown countdown timer loop
-    LaunchedEffect(showCrashDialog) {
-        if (showCrashDialog) {
-            while (crashCountdown > 0) {
-                delay(1000)
-                crashCountdown--
-            }
-            // Trigger SOS when countdown reaches 0
-            showCrashDialog = false
             onTriggerSos()
         }
     }
+
+    // Critical impacts are escalated immediately. This dialog is only an
+    // acknowledgement and never delays or cancels the SOS.
 
     // Driving simulator loop (only for speed and timer)
     LaunchedEffect(Unit) {
@@ -513,7 +502,7 @@ fun ActiveTripScreen(
         // Automatic Collision/Impact Dialog Overlay
         if (showCrashDialog) {
             AlertDialog(
-                onDismissRequest = { showCrashDialog = false },
+                onDismissRequest = { /* La alerta ya fue escalada; se requiere confirmación visible. */ },
                 title = {
                     Text(
                         text = "⚠️ ¡IMPACTO DETECTADO!",
@@ -524,9 +513,9 @@ fun ActiveTripScreen(
                 text = {
                     Text(
                         text = String.format(
-                            "Se ha registrado una aceleración violenta de %.2f G.\n\nSe emitirá una alerta SOS automática a tus monitores en %d segundos...",
+                            "Se registró una aceleración violenta de %.2f G.\n\n" +
+                                "La alerta SOS se procesó inmediatamente. El viaje y la telemetría continúan.",
                             crashForceValue,
-                            crashCountdown
                         ),
                         color = Color.White
                     )
@@ -536,7 +525,7 @@ fun ActiveTripScreen(
                         onClick = { showCrashDialog = false },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E))
                     ) {
-                        Text("ESTOY BIEN (Cancelar SOS)", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("ENTENDIDO", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 },
                 containerColor = Color(0xFF2C1414),

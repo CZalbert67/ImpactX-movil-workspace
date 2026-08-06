@@ -120,14 +120,9 @@ class MainActivity : ComponentActivity() {
                                     service.resetAlarm()
                                 },
                                 onTimeout = {
-                                    // Escalate the SAME impactEventId to SOS — do NOT create a new event.
-                                    // The phone already received IMPACT_DETECTED and is tracking it.
-                                    val existingEventId = service.impactEventId
-                                    val payload = org.json.JSONObject().apply {
-                                        put("eventId", existingEventId ?: java.util.UUID.randomUUID().toString())
-                                        put("action", "ESCALATE_TO_SOS")
-                                    }.toString()
-                                    service.sendSignalToPhone("/sos-triggered", payload)
+                                    // The impact was already sent immediately by SensorService.
+                                    // This callback only preserves the screen API; it must not
+                                    // create a second SOS or a different idempotency key.
                                 }
                             )
                         } else {
