@@ -67,7 +67,3 @@ data class TelemetryPointDto(
     @SerializedName("timestamp") val timestamp: String
 )
 
-data class TelemetryBatchRequest(
-    @SerializedName("puntos") val puntos: List<TelemetryPointDto>
-)
-

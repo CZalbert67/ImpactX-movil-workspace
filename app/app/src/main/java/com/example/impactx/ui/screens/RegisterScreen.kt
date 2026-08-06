@@ -1,5 +1,7 @@
 package com.example.impactx.ui.screens
 
+import com.example.impactx.data.sync.FcmTokenRegistrar
+import com.example.impactx.data.sync.ImpactSyncScheduler
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -444,6 +446,9 @@ fun RegisterScreen(
                                                     )
                                                 )
                                             }
+
+                                            FcmTokenRegistrar.ensureRegistered(context)
+                                            ImpactSyncScheduler.enqueueCritical(context)
 
                                             // Retrieve the public profile ID
                                             val profileResponse = api.getProfileUsername()

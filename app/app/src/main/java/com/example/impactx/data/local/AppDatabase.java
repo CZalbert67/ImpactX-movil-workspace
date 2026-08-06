@@ -13,9 +13,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase;
         SessionEntity.class,
         AccidentEntity.class,
         WearSyncEventEntity.class,
-        WearableLinkageEntity.class
+        WearableLinkageEntity.class,
+        PendingSosEntity.class,
+        TelemetryQueueEntity.class
     },
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 public abstract class AppDatabase extends RoomDatabase {
@@ -23,6 +25,8 @@ public abstract class AppDatabase extends RoomDatabase {
     public abstract AccidentDao accidentDao();
     public abstract WearSyncEventDao wearSyncEventDao();
     public abstract WearableLinkageDao wearableLinkageDao();
+    public abstract PendingSosDao pendingSosDao();
+    public abstract TelemetryQueueDao telemetryQueueDao();
 
     // ── Migration 2 → 3: initial wear_sync_events table ──────────────────────
     private static final Migration MIGRATION_2_3 = new Migration(2, 3) {
@@ -83,6 +87,40 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+
+    // ── Migration 5 → 6: durable SOS and telemetry batch queues ──────────────
+    private static final Migration MIGRATION_5_6 = new Migration(5, 6) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase database) {
+            database.execSQL("CREATE TABLE IF NOT EXISTS `pending_sos` ("
+                + "`eventId` TEXT NOT NULL PRIMARY KEY, "
+                + "`sourceNodeId` TEXT, `tripId` TEXT, `localAccidentId` INTEGER NOT NULL, "
+                + "`lat` REAL NOT NULL, `lng` REAL NOT NULL, `place` TEXT, "
+                + "`severity` TEXT, `channel` TEXT, `gForce` TEXT, `heartRate` TEXT, "
+                + "`mode` TEXT, `timestampUtc` TEXT, `capturedOffline` INTEGER NOT NULL, "
+                + "`status` TEXT, `attempts` INTEGER NOT NULL, "
+                + "`lastError` TEXT, `backendAlertId` TEXT, `createdAtMs` INTEGER NOT NULL, "
+                + "`sentAtMs` INTEGER NOT NULL)");
+
+            database.execSQL("CREATE TABLE IF NOT EXISTS `telemetry_queue` ("
+                + "`eventId` TEXT NOT NULL PRIMARY KEY, `tripId` TEXT NOT NULL, "
+                + "`sequenceNumber` INTEGER, `timestampUtc` TEXT, "
+                + "`lat` REAL NOT NULL, `lng` REAL NOT NULL, `velocity` REAL NOT NULL, "
+                + "`gpsAccuracyMeters` REAL, "
+                + "`accelerationX` REAL, `accelerationY` REAL, `accelerationZ` REAL, "
+                + "`accelerationMagnitude` REAL, `gyroscopeX` REAL, `gyroscopeY` REAL, "
+                + "`gyroscopeZ` REAL, `heartRate` INTEGER, `batteryLevel` INTEGER, "
+                + "`capturedOffline` INTEGER NOT NULL, `wearableDeviceId` TEXT, "
+                + "`wearableModel` TEXT, `status` TEXT, `batchId` TEXT, `lastError` TEXT, "
+                + "`createdAtMs` INTEGER NOT NULL, `sentAtMs` INTEGER NOT NULL)");
+
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_telemetry_queue_trip_status` "
+                + "ON `telemetry_queue` (`tripId`, `status`)");
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_telemetry_queue_batchId` "
+                + "ON `telemetry_queue` (`batchId`)");
+        }
+    };
+
     private static volatile AppDatabase INSTANCE;
 
     public static AppDatabase getDatabase(final Context context) {
@@ -94,7 +132,7 @@ public abstract class AppDatabase extends RoomDatabase {
                         AppDatabase.class,
                         "impactx_db"
                     )
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .build();
                 }
             }

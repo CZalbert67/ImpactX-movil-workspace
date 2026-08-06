@@ -26,7 +26,6 @@ interface ApiService {
 
     @PUT("api/v1/devices/fcm-token")
     suspend fun updateFcmToken(
-        @Header("Authorization") token: String,
         @Body request: UpdateFcmTokenRequest
     ): Response<Unit>
 
@@ -68,8 +67,8 @@ interface ApiService {
     @POST("api/v1/trips/{id}/telemetry")
     suspend fun ingestTelemetry(
         @retrofit2.http.Path("id") tripId: String,
-        @Body request: TelemetryBatchRequest
-    ): Response<Unit>
+        @Body request: TelemetryBatchRequestV2
+    ): Response<TelemetryIngestionResultDto>
 
     // ---- Alerts / SOS ----
     @POST("api/v1/alerts/sos")

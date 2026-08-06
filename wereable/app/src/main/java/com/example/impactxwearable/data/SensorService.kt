@@ -266,6 +266,13 @@ class SensorService : Service(), SensorEventListener {
     }
 
     private var lastTelemetryTime = 0L
+    @Volatile private var lastTelemetryPayloadMs = 0L
+    @Volatile private var lastAccelerationX = 0f
+    @Volatile private var lastAccelerationY = 0f
+    @Volatile private var lastAccelerationZ = 9.81f
+    @Volatile private var lastGyroscopeX = 0f
+    @Volatile private var lastGyroscopeY = 0f
+    @Volatile private var lastGyroscopeZ = 0f
 
     inner class SensorBinder : Binder() {
         fun getService(): SensorService = this@SensorService
@@ -391,6 +398,9 @@ class SensorService : Service(), SensorEventListener {
                 val x = event.values[0]
                 val y = event.values[1]
                 val z = event.values[2]
+                lastAccelerationX = x
+                lastAccelerationY = y
+                lastAccelerationZ = z
                 
                 // Calculate G-Force magnitude
                 val magnitude = sqrt(x*x + y*y + z*z) / 9.81f
@@ -414,6 +424,9 @@ class SensorService : Service(), SensorEventListener {
             Sensor.TYPE_GYROSCOPE -> {
                 val rollRate = event.values[0]
                 val pitchRate = event.values[1]
+                lastGyroscopeX = event.values.getOrElse(0) { 0f }
+                lastGyroscopeY = event.values.getOrElse(1) { 0f }
+                lastGyroscopeZ = event.values.getOrElse(2) { 0f }
                 
                 // Check for fast rotation suggesting a rollover (> 30 rad/s threshold)
                 val rotationMagnitude = sqrt(rollRate*rollRate + pitchRate*pitchRate)
@@ -428,13 +441,17 @@ class SensorService : Service(), SensorEventListener {
 
     private fun triggerImpactAlert(source: String, peakG: Float, eventId: String) {
         _impactDetected.value = true
-        // Send IMPACT_DETECTED with unified eventId — the phone escalates to SOS on confirmation
+        // Send IMPACT_DETECTED with a unified eventId; the phone escalates immediately and keeps the trip active
         val payload = org.json.JSONObject().apply {
             put("eventId", eventId)
             put("action", "IMPACT_DETECTED")
             put("source", source)
             put("peakG", peakG)
-            put("timestampUtc", java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date()))
+            put("heartRate", _heartRate.value)
+            put("batteryLevel", getBatteryLevel())
+            put("installationId", WearableIdentity.getOrCreateInstallationId(this@SensorService))
+            activeTripId?.let { put("tripId", it) }
+            put("timestampUtc", utcNowString())
         }.toString()
         sendSignalToPhone("/impact-detected", payload)
         
@@ -535,21 +552,51 @@ class SensorService : Service(), SensorEventListener {
         }
     }
 
+    private fun utcNowString(): String = java.text.SimpleDateFormat(
+        "yyyy-MM-dd'T'HH:mm:ss'Z'",
+        java.util.Locale.US,
+    ).apply {
+        timeZone = java.util.TimeZone.getTimeZone("UTC")
+    }.format(java.util.Date())
+
     private fun getBatteryLevel(): Int {
         val bm = getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager
         return bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: 100
     }
 
+    @Synchronized
     private fun sendTelemetryToPhone() {
+        val now = System.currentTimeMillis()
+        if (now - lastTelemetryPayloadMs < 1_500L) return
+        lastTelemetryPayloadMs = now
+
+        val eventId = java.util.UUID.randomUUID().toString()
+        val sequenceNumber = nextTelemetrySequence()
+        val timestampUtc = utcNowString()
+        val tripIdSnapshot = activeTripId
+        val installationId = WearableIdentity.getOrCreateInstallationId(this)
+
         serviceScope.launch {
             try {
                 val nodes = Wearable.getNodeClient(this@SensorService).connectedNodes.await()
                 val data = JSONObject().apply {
+                    put("eventId", eventId)
+                    put("sequenceNumber", sequenceNumber)
+                    put("timestampUtc", timestampUtc)
+                    put("installationId", installationId)
+                    tripIdSnapshot?.let { put("tripId", it) }
                     put("heartRate", _heartRate.value)
                     put("gForce", _gForce.value)
                     put("maxGForce", _maxGForce.value)
                     put("isImpact", _impactDetected.value)
                     put("batteryLevel", getBatteryLevel())
+                    put("accelerationX", lastAccelerationX)
+                    put("accelerationY", lastAccelerationY)
+                    put("accelerationZ", lastAccelerationZ)
+                    put("accelerationMagnitude", _gForce.value * 9.80665f)
+                    put("gyroscopeX", lastGyroscopeX)
+                    put("gyroscopeY", lastGyroscopeY)
+                    put("gyroscopeZ", lastGyroscopeZ)
                 }.toString().toByteArray()
 
                 for (node in nodes) {
@@ -560,6 +607,14 @@ class SensorService : Service(), SensorEventListener {
                 Log.e("WearTelemetry", "Error sending telemetry: ${e.message}")
             }
         }
+    }
+
+    @Synchronized
+    private fun nextTelemetrySequence(): Long {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val next = prefs.getLong(KEY_TELEMETRY_SEQUENCE, 0L) + 1L
+        prefs.edit().putLong(KEY_TELEMETRY_SEQUENCE, next).commit()
+        return next
     }
 
     fun sendSignalToPhone(path: String, payload: String) {
@@ -636,5 +691,6 @@ class SensorService : Service(), SensorEventListener {
         private const val PREFS_NAME = "impactx_wear_trip"
         private const val KEY_ACTIVE_TRIP_ID = "active_trip_id"
         private const val KEY_TRIP_STATE = "trip_state"
+        private const val KEY_TELEMETRY_SEQUENCE = "telemetry_sequence"
     }
 }

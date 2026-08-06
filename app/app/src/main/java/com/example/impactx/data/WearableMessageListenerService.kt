@@ -13,10 +13,16 @@ import com.example.impactx.data.local.AppDatabase
 import com.example.impactx.data.local.AccidentEntity
 import com.example.impactx.data.local.WearSyncEventEntity
 import com.example.impactx.data.local.WearableLinkageEntity
+import com.example.impactx.data.local.PendingSosEntity
+import com.example.impactx.data.local.TelemetryQueueEntity
+import com.example.impactx.data.sync.BatchSyncPolicy
+import com.example.impactx.data.sync.ImpactSyncProcessor
+import com.example.impactx.data.sync.ImpactSyncScheduler
+import com.example.impactx.data.sync.NetworkState
+import com.example.impactx.data.sync.SyncPreferences
 import com.example.impactx.data.remote.ApiClient
 import com.example.impactx.data.remote.PairConfirmRequest
 import com.example.impactx.data.remote.PairWearableRequest
-import com.example.impactx.data.remote.SosRequest
 import com.example.impactx.data.remote.StartTripRequest
 import com.example.impactx.ui.screens.BLEState
 import com.example.impactx.ui.screens.WearableManager
@@ -42,6 +48,7 @@ class WearableMessageListenerService : WearableListenerService() {
 
     // ── Secondary debounce guards (primary protection is Room idempotency) ───
     @Volatile private var lastImpactHandledMs: Long = 0
+    @Volatile private var lastImpactEventId: String? = null
     private val IMPACT_COOLDOWN_MS = 15_000L
 
     override fun onMessageReceived(messageEvent: MessageEvent) {
@@ -68,7 +75,9 @@ class WearableMessageListenerService : WearableListenerService() {
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private fun nowUtcString(): String =
-        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }.format(Date())
 
     private fun pendingEvent(
         eventId: String,
@@ -418,36 +427,119 @@ class WearableMessageListenerService : WearableListenerService() {
     private fun handleTelemetry(rawData: String, sourceNodeId: String) {
         try {
             val json = JSONObject(rawData)
-            val heartRate    = json.optInt("heartRate", 0)
-            val gForce       = json.optDouble("gForce", 1.0).toFloat()
+            val heartRate = json.optInt("heartRate", 0)
+            val gForce = json.optDouble("gForce", 1.0)
             val batteryLevel = json.optInt("batteryLevel", 100)
 
-            WearableManager.realHeartRate    = heartRate
+            WearableManager.realHeartRate = heartRate
             WearableManager.realBatteryLevel = batteryLevel
-            WearableManager.lastSeenAtMs     = System.currentTimeMillis()
-            WearableManager.telemetryFresh   = true
+            WearableManager.lastSeenAtMs = System.currentTimeMillis()
+            WearableManager.telemetryFresh = true
 
-            // Update lastSeen in Room without touching backendLinked
-            scope.launch {
-                try {
-                    AppDatabase.getDatabase(applicationContext)
-                        .wearableLinkageDao()
-                        .touchLastSeen(sourceNodeId, System.currentTimeMillis())
-                } catch (_: Exception) {}
-            }
-
-            // Only set CONNECTED_DASHBOARD if we have a confirmed backend link
             if (WearableManager.backendLinked) {
                 WearableManager.bleState = BLEState.CONNECTED_DASHBOARD
                 WearableManager.isRealConnection = true
-                WearableManager.connectedDeviceName = WearableManager.connectedDeviceName ?: "Galaxy Watch8"
+                WearableManager.connectedDeviceName =
+                    WearableManager.connectedDeviceName ?: WearableContract.DEVICE_NAME
             }
 
-            Log.d(TAG, "TELEMETRY HR=$heartRate G=$gForce Batt=$batteryLevel% nodeId=$sourceNodeId")
+            scope.launch {
+                val db = AppDatabase.getDatabase(applicationContext)
+                runCatching {
+                    db.wearableLinkageDao().touchLastSeen(sourceNodeId, System.currentTimeMillis())
+                }
+
+                val prefs = applicationContext.getSharedPreferences(
+                    "impactx_prefs",
+                    Context.MODE_PRIVATE,
+                )
+                val tripId = json.optString("tripId", "").takeIf { it.isNotBlank() }
+                    ?: prefs.getString("active_trip_id", null)
+                    ?: WearableManager.activeWearTripId
+
+                // Telemetry outside an active trip remains useful for the local
+                // dashboard, but it is not persisted or sent to the backend.
+                if (tripId.isNullOrBlank()) {
+                    Log.d(TAG, "TELEMETRY_UI_ONLY HR=$heartRate G=$gForce Batt=$batteryLevel%")
+                    return@launch
+                }
+
+                val linkage = db.wearableLinkageDao().getLinkageByNodeId(sourceNodeId)
+                val wearableDeviceId = WearableManager.backendDeviceId
+                    ?: linkage?.backendDeviceId
+                if (wearableDeviceId.isNullOrBlank()) {
+                    Log.w(TAG, "TELEMETRY_NOT_QUEUED_NO_LINK nodeId=$sourceNodeId")
+                    return@launch
+                }
+
+                val online = NetworkState.isOnline(applicationContext)
+                val demoHold = SyncPreferences.isTelemetryHoldEnabled(applicationContext)
+                val phoneLocation = if (!json.has("lat") || !json.has("lng")) {
+                    LocationHelper.getLastKnownLocation(applicationContext)
+                } else {
+                    null
+                }
+                val entity = TelemetryQueueEntity().apply {
+                    eventId = json.optString("eventId", "").takeIf { it.isNotBlank() }
+                        ?: java.util.UUID.randomUUID().toString()
+                    this.tripId = tripId
+                    sequenceNumber = if (json.has("sequenceNumber")) {
+                        json.optLong("sequenceNumber")
+                    } else {
+                        SyncPreferences.nextSequence(applicationContext)
+                    }
+                    timestampUtc = json.optString("timestampUtc", "").takeIf { it.isNotBlank() }
+                        ?: nowUtcString()
+                    lat = json.optDouble("lat", phoneLocation?.latitude ?: 0.0)
+                    lng = json.optDouble("lng", phoneLocation?.longitude ?: 0.0)
+                    velocity = json.optDouble("velocity", 0.0)
+                    gpsAccuracyMeters = json.optNullableDouble("gpsAccuracyMeters")
+                        ?: phoneLocation?.accuracy?.toDouble()
+                    accelerationX = json.optNullableDouble("accelerationX")
+                    accelerationY = json.optNullableDouble("accelerationY")
+                    accelerationZ = json.optNullableDouble("accelerationZ")
+                    accelerationMagnitude = json.optNullableDouble("accelerationMagnitude")
+                        ?: gForce * 9.80665
+                    gyroscopeX = json.optNullableDouble("gyroscopeX")
+                    gyroscopeY = json.optNullableDouble("gyroscopeY")
+                    gyroscopeZ = json.optNullableDouble("gyroscopeZ")
+                    this.heartRate = heartRate.takeIf { it > 0 }
+                    this.batteryLevel = batteryLevel
+                    capturedOffline = !online || demoHold
+                    this.wearableDeviceId = wearableDeviceId
+                    wearableModel = WearableContract.MODEL
+                    status = "PENDING"
+                    batchId = null
+                    lastError = null
+                    createdAtMs = System.currentTimeMillis()
+                    sentAtMs = 0L
+                }
+
+                val inserted = db.telemetryQueueDao().insertIfAbsent(entity)
+                if (inserted == -1L) {
+                    Log.d(TAG, "TELEMETRY_DUPLICATE eventId=${entity.eventId.take(8)}")
+                    return@launch
+                }
+
+                val pendingCount = db.telemetryQueueDao().countPending()
+                ImpactSyncScheduler.enqueueTelemetry(
+                    applicationContext,
+                    immediate = pendingCount >= BatchSyncPolicy.MAX_BATCH_SIZE,
+                    force = false,
+                )
+                Log.d(
+                    TAG,
+                    "TELEMETRY_QUEUED eventId=${entity.eventId.take(8)} tripId=${tripId.take(8)} " +
+                        "pending=$pendingCount offline=${entity.capturedOffline}",
+                )
+            }
         } catch (e: Exception) {
             Log.e(TAG, "TELEMETRY_PARSE_ERROR msg=${e.message}")
         }
     }
+
+    private fun JSONObject.optNullableDouble(name: String): Double? =
+        if (has(name) && !isNull(name)) optDouble(name) else null
 
     // ─── /device-info resolution helper for trip commands ───────────────────
     /**
@@ -527,66 +619,131 @@ class WearableMessageListenerService : WearableListenerService() {
 
     // ─── Impact / SOS ────────────────────────────────────────────────────────
     private fun handleImpact(rawData: String, path: String, sourceNodeId: String) {
+        val json = runCatching { JSONObject(rawData) }.getOrNull() ?: JSONObject()
+        val eventId = json.optString("eventId", "").takeIf { it.isNotBlank() }
+            ?: java.util.UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
-        if (now - lastImpactHandledMs < IMPACT_COOLDOWN_MS) {
-            Log.w(TAG, "IMPACT_DEBOUNCED cooldown active")
+        if (eventId == lastImpactEventId && now - lastImpactHandledMs < IMPACT_COOLDOWN_MS) {
+            Log.w(TAG, "IMPACT_DUPLICATE_DEBOUNCED eventId=${eventId.take(8)}")
             return
         }
+        lastImpactEventId = eventId
         lastImpactHandledMs = now
 
-        val json = runCatching { JSONObject(rawData) }.getOrNull()
-        val eventId = json?.optString("eventId", "")?.takeIf { it.isNotBlank() }
-            ?: java.util.UUID.randomUUID().toString()
         val action = if (path == "/sos-triggered") "SOS" else "IMPACT_DETECTED"
 
+        // The driver receives an immediate local warning even when the phone is
+        // offline. Remote monitors are notified by the durable SOS worker as
+        // soon as a validated internet connection is available.
         triggerEmergencyAutoLaunch(applicationContext)
 
         scope.launch {
             val db = AppDatabase.getDatabase(applicationContext)
-            val dao = db.wearSyncEventDao()
-
-            val existing = withContext(Dispatchers.IO) { dao.findByEventId(eventId) }
-            if (existing != null && existing.status == "SUCCEEDED") {
-                Log.w(TAG, "[$action] eventId=${eventId.take(8)} already SUCCEEDED, ignoring")
+            val wearEventDao = db.wearSyncEventDao()
+            val existing = withContext(Dispatchers.IO) { wearEventDao.findByEventId(eventId) }
+            if (existing?.status == "SUCCEEDED") {
+                Log.w(TAG, "[$action] eventId=${eventId.take(8)} already SUCCEEDED")
                 return@launch
             }
 
-            withContext(Dispatchers.IO) { dao.insertEventIfAbsent(pendingEvent(eventId, action)) }
+            withContext(Dispatchers.IO) {
+                wearEventDao.insertEventIfAbsent(
+                    pendingEvent(eventId, action, sourceNodeId),
+                )
+            }
 
             try {
-                val heartRate  = if (WearableManager.realHeartRate > 0) WearableManager.realHeartRate else 75
-                val gForce     = 25.0
-                val location   = LocationHelper.getLastKnownLocation(applicationContext)
-                val lat        = location?.latitude ?: 0.0
-                val lng        = location?.longitude ?: 0.0
-                val timestamp  = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+                val heartRate = json.optInt("heartRate", WearableManager.realHeartRate)
+                    .takeIf { it > 0 } ?: 75
+                val gForce = json.optDouble("peakG", json.optDouble("gForce", 25.0))
+                val location = LocationHelper.getLastKnownLocation(applicationContext)
+                val lat = json.optDouble("lat", location?.latitude ?: 0.0)
+                val lng = json.optDouble("lng", location?.longitude ?: 0.0)
+                val timestampUtc = json.optString("timestampUtc", "").takeIf { it.isNotBlank() }
+                    ?: nowUtcString()
+                val localTimestamp = SimpleDateFormat(
+                    "yyyy-MM-dd HH:mm:ss",
+                    Locale.getDefault(),
+                ).format(Date())
+                val prefs = applicationContext.getSharedPreferences(
+                    "impactx_prefs",
+                    Context.MODE_PRIVATE,
+                )
+                val tripId = json.optString("tripId", "").takeIf { it.isNotBlank() }
+                    ?: prefs.getString("active_trip_id", null)
+                    ?: WearableManager.activeWearTripId
+                val place = if (lat != 0.0 || lng != 0.0) {
+                    LocationHelper.formatLocation(lat, lng)
+                } else {
+                    "Ubicación no disponible"
+                }
 
-                Log.w(TAG, "[$action] eventId=${eventId.take(8)} G=$gForce HR=$heartRate GPS=$lat,$lng")
+                val accidentId = withContext(Dispatchers.IO) {
+                    db.accidentDao().insertAccident(
+                        AccidentEntity(heartRate, gForce, localTimestamp, lat, lng, false),
+                    ).toInt()
+                }
+
+                val pendingSos = PendingSosEntity().apply {
+                    this.eventId = eventId
+                    this.sourceNodeId = sourceNodeId
+                    this.tripId = tripId
+                    localAccidentId = accidentId
+                    this.lat = lat
+                    this.lng = lng
+                    this.place = place
+                    severity = "severe"
+                    channel = "wearable-relay-mobile"
+                    this.gForce = String.format(Locale.US, "%.2f", gForce)
+                    this.heartRate = heartRate.toString()
+                    mode = "immediate"
+                    this.timestampUtc = timestampUtc
+                    capturedOffline = !NetworkState.isOnline(applicationContext)
+                    status = "PENDING"
+                    attempts = 0
+                    lastError = null
+                    backendAlertId = null
+                    createdAtMs = System.currentTimeMillis()
+                    sentAtMs = 0L
+                }
 
                 withContext(Dispatchers.IO) {
-                    db.accidentDao().insertAccident(
-                        AccidentEntity(heartRate, gForce, timestamp, lat, lng, false)
+                    db.pendingSosDao().insertIfAbsent(pendingSos)
+                }
+
+                // Persist first and enqueue the durable worker before attempting
+                // the direct request. If the process dies at this point, WorkManager
+                // still owns the pending SOS and will run as soon as network exists.
+                ImpactSyncScheduler.enqueueCritical(applicationContext)
+                if (NetworkState.isOnline(applicationContext)) {
+                    ImpactSyncProcessor.run(
+                        applicationContext,
+                        forceTelemetry = false,
+                        includeTelemetry = false,
                     )
                 }
 
-                withContext(Dispatchers.IO) {
-                    dao.updateStatus(eventId, "SUCCEEDED", 200, "", nowUtcString())
-                }
-
-                // A collision/alert must not silently finish the trip. The trip lifecycle
-                // remains controlled by the wearable so its state, the phone and the backend
-                // cannot diverge after an impact simulation.
-                val prefs  = applicationContext.getSharedPreferences("impactx_prefs", Context.MODE_PRIVATE)
-                val tripId = prefs.getString("active_trip_id", null) ?: WearableManager.activeWearTripId
                 if (tripId != null) {
-                    Log.i(TAG, "IMPACT_RECORDED_TRIP_CONTINUES tripId=${tripId.take(8)} action=$action")
+                    Log.i(
+                        TAG,
+                        "IMPACT_QUEUED_TRIP_CONTINUES tripId=${tripId.take(8)} " +
+                            "eventId=${eventId.take(8)} online=${NetworkState.isOnline(applicationContext)}",
+                    )
+                } else {
+                    Log.i(TAG, "IMPACT_QUEUED_WITHOUT_TRIP eventId=${eventId.take(8)}")
                 }
 
                 WearableManager.triggerEmergencyNav = true
             } catch (e: Exception) {
                 Log.e(TAG, "IMPACT_PROCESSING_ERROR eventId=${eventId.take(8)} msg=${e.message}")
                 withContext(Dispatchers.IO) {
-                    dao.updateFailure(eventId, "FAILED", 0, e.message ?: "Error desconocido", nowUtcString())
+                    wearEventDao.updateFailure(
+                        eventId,
+                        "FAILED",
+                        0,
+                        e.message ?: "Error desconocido",
+                        nowUtcString(),
+                    )
                 }
                 WearableManager.triggerEmergencyNav = true
             }

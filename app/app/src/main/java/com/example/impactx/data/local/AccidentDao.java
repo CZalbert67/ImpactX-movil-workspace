@@ -9,7 +9,7 @@ import java.util.List;
 @Dao
 public interface AccidentDao {
     @Insert
-    void insertAccident(AccidentEntity accident);
+    long insertAccident(AccidentEntity accident);
 
     @Query("SELECT * FROM accident_records WHERE sent = 0 ORDER BY id DESC")
     List<AccidentEntity> getPendingAccidents();

@@ -6,6 +6,7 @@ import android.util.Log
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import java.util.UUID
 
 /**
@@ -43,7 +44,9 @@ object WearableIdentity {
      */
     fun buildDeviceInfoPayload(context: Context, appVersion: String = "1.0"): String {
         val installationId = getOrCreateInstallationId(context)
-        val timestampUtc = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+        val timestampUtc = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }.format(Date())
         val osVersion = Build.VERSION.RELEASE
         val hardwareModel = Build.MODEL
         val contractModel = WearableContract.canonicalModel(hardwareModel)

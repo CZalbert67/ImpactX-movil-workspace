@@ -24,6 +24,8 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import com.example.impactx.data.local.AppDatabase
 import com.example.impactx.data.local.SessionEntity
 import com.example.impactx.data.remote.ApiClient
+import com.example.impactx.data.sync.FcmTokenRegistrar
+import com.example.impactx.data.sync.ImpactSyncScheduler
 import com.example.impactx.data.remote.LoginRequest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -177,6 +179,8 @@ fun LoginScreen(
                                         )
                                     }
                                     
+                                    FcmTokenRegistrar.ensureRegistered(context)
+                                    ImpactSyncScheduler.enqueueCritical(context)
                                     isLoading = false
                                     onLoginSuccess(userDto.username)
                                 } else {

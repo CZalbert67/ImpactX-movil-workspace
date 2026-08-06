@@ -108,6 +108,9 @@ dependencies {
   annotationProcessor(libs.androidx.room.compiler)
   implementation(libs.androidx.room.ktx)
 
+  // Durable offline synchronization
+  implementation(libs.androidx.work.runtime.ktx)
+
   // Retrofit & OkHttp
   implementation(libs.retrofit)
   implementation(libs.retrofit.converter.gson)
