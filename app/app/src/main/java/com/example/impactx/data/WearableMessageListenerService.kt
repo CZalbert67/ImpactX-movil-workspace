@@ -563,41 +563,10 @@ class WearableMessageListenerService : WearableListenerService() {
 
                 Log.w(TAG, "[$action] eventId=${eventId.take(8)} G=$gForce HR=$heartRate GPS=$lat,$lng")
 
-                // Save to local SQLite database (history)
                 withContext(Dispatchers.IO) {
                     db.accidentDao().insertAccident(
                         AccidentEntity(heartRate, gForce, timestamp, lat, lng, false)
                     )
-                }
-
-                // Call Backend APIs: send SOS instantly and call MLMODEL dummy placeholder
-                try {
-                    val api = ApiClient.getApiService(applicationContext)
-                    
-                    // Dummy call to callMlModel API
-                    runCatching {
-                        api.callMlModel()
-                        Log.i(TAG, "[$action] MLMODEL API dummy placeholder called successfully.")
-                    }
-
-                    val prefs  = applicationContext.getSharedPreferences("impactx_prefs", Context.MODE_PRIVATE)
-                    val tripId = prefs.getString("active_trip_id", null) ?: WearableManager.activeWearTripId
-                    
-                    val sosRequest = SosRequest(
-                        lat = lat,
-                        lng = lng,
-                        lugar = "Ubicación detectada por WearOS",
-                        severidad = "severe",
-                        canal = "wearable",
-                        gForce = String.format(Locale.US, "%.2f", gForce),
-                        frecuenciaCardiaca = heartRate.toString(),
-                        modo = "automatico",
-                        viajeId = tripId
-                    )
-                    val response = api.sendSos(sosRequest)
-                    Log.i(TAG, "[$action] Instant SOS sent to backend successfully. HTTP=${response.code()}")
-                } catch (e: Exception) {
-                    Log.e(TAG, "[$action] Failed to send instant SOS to backend: ${e.message}")
                 }
 
                 withContext(Dispatchers.IO) {
@@ -632,13 +601,11 @@ class WearableMessageListenerService : WearableListenerService() {
             val channel = NotificationChannel(
                 channelId,
                 "Alertas Críticas de Colisión",
-                NotificationManager.IMPORTANCE_MAX
+                NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Notificaciones prioritarias para incidentes y colisiones detectadas"
                 enableLights(true)
                 enableVibration(true)
-                setBypassDnd(true)
-                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
             notificationManager.createNotificationChannel(channel)
         }

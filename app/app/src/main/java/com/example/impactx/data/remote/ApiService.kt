@@ -77,10 +77,6 @@ interface ApiService {
         @Body request: SosRequest
     ): Response<AlertStatusDto>
 
-    // Dummy API for ML model integration (no-op placeholder)
-    @POST("api/v1/mlmodel")
-    suspend fun callMlModel(): Response<Unit>
-
     @POST("api/v1/alerts/detect")
     suspend fun detectAlert(
         @Body request: DetectAlertRequest
