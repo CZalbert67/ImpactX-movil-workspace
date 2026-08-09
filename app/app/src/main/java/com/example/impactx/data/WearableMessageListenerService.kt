@@ -15,6 +15,8 @@ import com.example.impactx.data.local.WearSyncEventEntity
 import com.example.impactx.data.local.WearableLinkageEntity
 import com.example.impactx.data.local.PendingSosEntity
 import com.example.impactx.data.local.TelemetryQueueEntity
+import com.example.impactx.data.ml.ImpactModelInference
+import com.example.impactx.data.ml.ImpactModelInput
 import com.example.impactx.data.sync.BatchSyncPolicy
 import com.example.impactx.data.sync.ImpactSyncProcessor
 import com.example.impactx.data.sync.ImpactSyncScheduler
@@ -656,6 +658,30 @@ class WearableMessageListenerService : WearableListenerService() {
                 val heartRate = json.optInt("heartRate", WearableManager.realHeartRate)
                     .takeIf { it > 0 } ?: 75
                 val gForce = json.optDouble("peakG", json.optDouble("gForce", 25.0))
+                runCatching {
+                    val modelPrediction = ImpactModelInference.predict(
+                        ImpactModelInput(
+                            gForcePeak = gForce,
+                            heartRateBpm = heartRate,
+                            impactDurationMs = json.optInt("impactDurationMs", 100),
+                            speedDeltaKmh = json.optDouble("speedDeltaKmh", 0.0),
+                            postImpactInactivitySeconds = json.optInt("postImpactInactivitySeconds", 0),
+                        ),
+                    )
+
+                    Log.d(
+                        TAG,
+                        "IMPACT_MODEL severity=${modelPrediction.severity} " +
+                            "confidence=${String.format(Locale.US, "%.4f", modelPrediction.confidence)} " +
+                            "action=${modelPrediction.decision.action} model=${modelPrediction.modelVersion}",
+                    )
+                }.onFailure { error ->
+                    Log.w(
+                        TAG,
+                        "IMPACT_MODEL inference unavailable; existing SOS flow continues",
+                        error,
+                    )
+                }
                 val location = LocationHelper.getLastKnownLocation(applicationContext)
                 val lat = json.optDouble("lat", location?.latitude ?: 0.0)
                 val lng = json.optDouble("lng", location?.longitude ?: 0.0)
